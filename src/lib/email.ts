@@ -2,8 +2,15 @@ import { Resend } from 'resend';
 import ical from 'ical-generator';
 import { formatJapaneseDate, formatTime } from './utils';
 
-// Resend クライアントの初期化
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Resend クライアントの遅延初期化（ビルド時の即座実行を防ぐ）
+let _resend: Resend | null = null;
+function getResend(): Resend | null {
+  if (!process.env.RESEND_API_KEY) return null;
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return _resend;
+}
 
 interface SendInviteEmailParams {
   invitedEmails: string[];
@@ -27,7 +34,8 @@ export async function sendInviteEmail({
   title,
   description,
 }: SendInviteEmailParams) {
-  if (!process.env.RESEND_API_KEY) {
+  const resend = getResend();
+  if (!resend) {
     console.warn('RESEND_API_KEY が設定されていないため、メール送信をスキップします。');
     return { success: false, message: 'APIキーが設定されていません。' };
   }

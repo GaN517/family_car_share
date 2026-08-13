@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { createReservation, updateReservation, deleteReservation } from '@/app/actions/reservations';
 import { auth } from '@/lib/firebase';
 import { 
   X, 
@@ -234,7 +233,7 @@ export default function ReservationModal({
     };
 
     try {
-      // ユーザー ID トークンを取得して Server Action に渡す
+      // ユーザー ID トークンを取得して API に渡す
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) {
         setErrorMessage('セッションの期限が切れました。ログインし直してください。');
@@ -243,8 +242,19 @@ export default function ReservationModal({
       }
 
       if (isEditMode && editReservation) {
-        // 更新処理
-        const res = await updateReservation(editReservation.id, inputData, idToken);
+        // 更新処理 (PUT)
+        const response = await fetch('/api/reservations', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            id: editReservation.id,
+            ...inputData,
+          }),
+        });
+        const res = await response.json();
         if (res.success) {
           onSuccess();
           onClose();
@@ -252,8 +262,16 @@ export default function ReservationModal({
           setErrorMessage(res.error || '予約の更新に失敗しました。');
         }
       } else {
-        // 新規作成
-        const res = await createReservation(inputData, idToken);
+        // 新規作成 (POST)
+        const response = await fetch('/api/reservations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
+          },
+          body: JSON.stringify(inputData),
+        });
+        const res = await response.json();
         if (res.success) {
           if (res.data?.googleCalendarUrl) {
             setSuccessGoogleUrl(res.data.googleCalendarUrl);
@@ -287,16 +305,22 @@ export default function ReservationModal({
         return;
       }
 
-      const res = await deleteReservation(editReservation.id, idToken);
+      const response = await fetch(`/api/reservations?id=${editReservation.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+        },
+      });
+      const res = await response.json();
       if (res.success) {
         onSuccess();
         onClose();
       } else {
         setErrorMessage(res.error || '予約の削除に失敗しました。');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('削除エラー:', err);
-      setErrorMessage('削除に失敗しました。');
+      setErrorMessage('削除中に通信エラーが発生しました。');
     } finally {
       setSubmitting(false);
     }
