@@ -1,9 +1,6 @@
-'use server';
-
 import { adminDb, adminAuth, Timestamp, FieldValue } from '@/lib/firebase-admin';
 import { sendInviteEmail } from '@/lib/email';
 import { formatCalendarTemplate, generateGoogleCalendarUrl } from '@/lib/utils';
-import { revalidatePath } from 'next/cache';
 
 interface ReservationInput {
   vehicle_id: string;
@@ -145,7 +142,7 @@ export async function createReservation(input: ReservationInput, idToken: string
       }).catch(err => console.error('バックグラウンドメール送信エラー:', err));
     }
 
-    revalidatePath('/');
+
     return { success: true, data: { id: newReservationRef.id, googleCalendarUrl } };
   } catch (error: any) {
     console.error('予約作成 Server Action エラー:', error);
@@ -202,7 +199,7 @@ export async function updateReservation(id: string, input: ReservationInput, idT
       purpose: input.purpose || '',
     });
 
-    revalidatePath('/');
+
     return { success: true };
   } catch (error: any) {
     console.error('予約更新 Server Action エラー:', error);
@@ -225,7 +222,7 @@ export async function deleteReservation(id: string, idToken: string) {
 
     await reservationRef.delete();
 
-    revalidatePath('/');
+
     return { success: true };
   } catch (error: any) {
     console.error('予約削除 Server Action エラー:', error);
