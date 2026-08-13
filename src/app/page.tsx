@@ -161,6 +161,8 @@ export default function DashboardPage() {
           start_time: data.start_time.toDate().toISOString(),
           end_time: data.end_time.toDate().toISOString(),
           invited_emails: data.invited_emails || [],
+          destination: data.destination || '',
+          purpose: data.purpose || '',
           profiles: groupMembers[data.user_id] || { name: '不明なユーザー', email: '' }
         };
       });

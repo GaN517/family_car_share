@@ -37,7 +37,7 @@ export const formatTime = (date: Date | string | number): string => {
 
 /**
  * テンプレート文字列のプレースホルダーを実際の値に置換します。
- * {vehicle_name}, {user_name}, {invited_emails} を置換します。
+ * {vehicle_name}, {user_name}, {invited_emails}, {destination}, {purpose} を置換します。
  */
 export const formatCalendarTemplate = (
   template: string,
@@ -45,12 +45,16 @@ export const formatCalendarTemplate = (
     vehicle_name: string;
     user_name: string;
     invited_emails: string;
+    destination?: string;
+    purpose?: string;
   }
 ): string => {
   return template
     .replace(/{vehicle_name}/g, data.vehicle_name)
     .replace(/{user_name}/g, data.user_name)
-    .replace(/{invited_emails}/g, data.invited_emails);
+    .replace(/{invited_emails}/g, data.invited_emails)
+    .replace(/{destination}/g, data.destination || '未指定')
+    .replace(/{purpose}/g, data.purpose || '未指定');
 };
 
 /**
@@ -68,12 +72,18 @@ export const formatToGoogleCalendarTime = (date: Date | string): string => {
 export const generateGoogleCalendarUrl = (params: {
   title: string;
   description: string;
+  location?: string;
   startTime: string | Date;
   endTime: string | Date;
 }): string => {
   const text = encodeURIComponent(params.title);
   const details = encodeURIComponent(params.description);
+  const location = params.location ? encodeURIComponent(params.location) : '';
   const dates = `${formatToGoogleCalendarTime(params.startTime)}/${formatToGoogleCalendarTime(params.endTime)}`;
   
-  return `https://www.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${dates}&details=${details}&sf=true&output=xml`;
+  let url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${dates}&details=${details}&sf=true&output=xml`;
+  if (location) {
+    url += `&location=${location}`;
+  }
+  return url;
 };

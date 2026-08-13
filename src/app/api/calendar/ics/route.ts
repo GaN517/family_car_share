@@ -100,16 +100,23 @@ export async function GET(request: NextRequest) {
       const invitedEmails = Array.isArray(res.invited_emails) ? res.invited_emails : [];
       const invitedListStr = invitedEmails.join(', ');
 
+      const destination = res.destination || '';
+      const purpose = res.purpose || '';
+
       const summary = formatCalendarTemplate(titleTemplate, {
         vehicle_name: vehicleName,
         user_name: userName,
         invited_emails: invitedListStr,
+        destination,
+        purpose,
       });
 
       const description = formatCalendarTemplate(descTemplate, {
         vehicle_name: vehicleName,
         user_name: userName,
         invited_emails: invitedListStr,
+        destination,
+        purpose,
       });
 
       cal.createEvent({
@@ -118,7 +125,7 @@ export async function GET(request: NextRequest) {
         end: endTime,
         summary: summary,
         description: description,
-        location: vehicleName,
+        location: destination ? `${vehicleName} (${destination})` : vehicleName,
         timezone: 'Asia/Tokyo',
       });
     });

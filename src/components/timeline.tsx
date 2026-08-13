@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { formatTime } from '@/lib/utils';
-import { Clock, User, Mail, Edit3, Trash2 } from 'lucide-react';
+import { Clock, User, Mail, Edit3, MapPin, Tag } from 'lucide-react';
 
 interface Reservation {
   id: string;
@@ -11,6 +11,8 @@ interface Reservation {
   start_time: string;
   end_time: string;
   invited_emails: string[];
+  destination?: string;
+  purpose?: string;
   profiles?: {
     name: string;
     email: string;
@@ -84,7 +86,7 @@ export default function Timeline({
                 </div>
 
                 {/* 予約者情報 */}
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-2.5">
                   <div className="h-6 w-6 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px] font-bold shadow-sm">
                     {userName.charAt(0)}
                   </div>
@@ -95,6 +97,24 @@ export default function Timeline({
                     </span>
                   )}
                 </div>
+
+                {/* 行き先・目的（入力がある場合） */}
+                {(res.destination || res.purpose) && (
+                  <div className="flex flex-wrap gap-2 mb-2 bg-slate-50/80 p-2.5 rounded-xl border border-slate-100/80 text-xs">
+                    {res.destination && (
+                      <div className="flex items-center gap-1 text-slate-700 font-medium">
+                        <MapPin className="h-3.5 w-3.5 text-rose-500 flex-shrink-0" />
+                        <span>{res.destination}</span>
+                      </div>
+                    )}
+                    {res.purpose && (
+                      <div className="flex items-center gap-1 text-slate-600">
+                        <Tag className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                        <span>{res.purpose}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* 招待された同乗者 */}
                 {res.invited_emails && res.invited_emails.length > 0 && (

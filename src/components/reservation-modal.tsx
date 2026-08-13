@@ -28,6 +28,8 @@ interface Reservation {
   end_time: string;
   invited_emails: string[];
   user_id: string;
+  destination?: string;
+  purpose?: string;
 }
 
 interface ReservationModalProps {
@@ -56,6 +58,8 @@ export default function ReservationModal({
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('18:00');
+  const [destination, setDestination] = useState('');
+  const [purpose, setPurpose] = useState('');
   
   // 招待メール用ステート
   const [emailInput, setEmailInput] = useState('');
@@ -89,6 +93,8 @@ export default function ReservationModal({
         setStartTime(String(start.getHours()).padStart(2, '0') + ':' + String(start.getMinutes()).padStart(2, '0'));
         setEndTime(String(end.getHours()).padStart(2, '0') + ':' + String(end.getMinutes()).padStart(2, '0'));
         setInvitedEmails(editReservation.invited_emails || []);
+        setDestination(editReservation.destination || '');
+        setPurpose(editReservation.purpose || '');
       } else {
         setVehicleId(currentVehicleId || (vehicles[0]?.id || ''));
         const today = new Date();
@@ -99,6 +105,8 @@ export default function ReservationModal({
         setStartTime('09:00');
         setEndTime('18:00');
         setInvitedEmails([]);
+        setDestination('');
+        setPurpose('');
       }
     }
   }, [isOpen, editReservation, currentVehicleId, vehicles]);
@@ -221,6 +229,8 @@ export default function ReservationModal({
       start_time: startDateTime.toISOString(),
       end_time: endDateTime.toISOString(),
       invited_emails: invitedEmails,
+      destination: destination.trim(),
+      purpose: purpose.trim(),
     };
 
     try {
@@ -255,9 +265,9 @@ export default function ReservationModal({
           setErrorMessage(res.error || '予約の作成に失敗しました。');
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('送信エラー:', err);
-      setErrorMessage('通信エラーが発生しました。時間を置いて再度お試しください。');
+      setErrorMessage(`送信エラー: ${err.message || '通信エラーが発生しました。時間を置いて再度お試しください。'}`);
     } finally {
       setSubmitting(false);
     }
@@ -412,6 +422,34 @@ export default function ReservationModal({
                     className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* 行き先・目的設定（任意） */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 mb-1.5">
+                  行き先 <span className="text-slate-400 font-normal">(任意)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="例：イオンモール, 病院"
+                  value={destination}
+                  onChange={(e) => setDestination(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 mb-1.5">
+                  目的 <span className="text-slate-400 font-normal">(任意)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="例：買い物, 送り迎え"
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                />
               </div>
             </div>
 
