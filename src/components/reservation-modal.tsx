@@ -267,18 +267,23 @@ export default function ReservationModal({
         });
         
         const rawText = await response.text();
+        if (!rawText) {
+          throw new Error(`サーバーから空のレスポンスが返されました (HTTP ${response.status})。Vercelのログを確認してください。`);
+        }
         let res: any = {};
         try {
-          res = rawText ? JSON.parse(rawText) : {};
+          res = JSON.parse(rawText);
         } catch {
-          throw new Error(`サーバーからの応答が無効です (${response.status}): ${rawText.slice(0, 100)}`);
+          throw new Error(`サーバーからの応答が無効です (${response.status}): ${rawText.slice(0, 200)}`);
         }
 
         if (res.success) {
           onSuccess();
           onClose();
         } else {
-          setErrorMessage(formatError(res.error, '予約の更新に失敗しました。'));
+          console.error('API 更新返却エラー:', res);
+          const errorMsg = res.error ? formatError(res.error, '予約の更新に失敗しました。') : `更新エラー: ${JSON.stringify(res)}`;
+          setErrorMessage(errorMsg);
         }
       } else {
         // 新規作成 (POST)
@@ -292,11 +297,14 @@ export default function ReservationModal({
         });
 
         const rawText = await response.text();
+        if (!rawText) {
+          throw new Error(`サーバーから空のレスポンスが返されました (HTTP ${response.status})。Vercelのログを確認してください。`);
+        }
         let res: any = {};
         try {
-          res = rawText ? JSON.parse(rawText) : {};
+          res = JSON.parse(rawText);
         } catch {
-          throw new Error(`サーバーからの応答が無効です (${response.status}): ${rawText.slice(0, 100)}`);
+          throw new Error(`サーバーからの応答が無効です (${response.status}): ${rawText.slice(0, 200)}`);
         }
 
         if (res.success) {
@@ -342,11 +350,14 @@ export default function ReservationModal({
       });
 
       const rawText = await response.text();
+      if (!rawText) {
+        throw new Error(`サーバーから空のレスポンスが返されました (HTTP ${response.status})。Vercelのログを確認してください。`);
+      }
       let res: any = {};
       try {
-        res = rawText ? JSON.parse(rawText) : {};
+        res = JSON.parse(rawText);
       } catch {
-        throw new Error(`サーバーからの応答が無効です (${response.status}): ${rawText.slice(0, 100)}`);
+        throw new Error(`サーバーからの応答が無効です (${response.status}): ${rawText.slice(0, 200)}`);
       }
 
       if (res.success) {
