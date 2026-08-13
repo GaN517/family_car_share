@@ -177,12 +177,18 @@ export default function LoginPage() {
     } catch (error: any) {
       console.error('認証エラー:', error);
       let msg = '認証に失敗しました。';
-      if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
         msg = 'メールアドレスまたはパスワードが正しくありません。';
       } else if (error.code === 'auth/email-already-in-use') {
         msg = 'このメールアドレスは既に登録されています。';
       } else if (error.code === 'auth/weak-password') {
         msg = 'パスワードは6文字以上で入力してください。';
+      } else if (error.code === 'auth/operation-not-allowed') {
+        msg = 'Firebase コンソールで「メール/パスワード」認証が有効化されていません。';
+      } else if (error.code === 'auth/invalid-api-key' || error.code === 'auth/app-not-authorized') {
+        msg = 'Firebase API キーまたは環境変数の設定が正しくありません。';
+      } else if (error.message) {
+        msg = `認証エラー (${error.code || '不明'}): ${error.message}`;
       }
       setErrorMessage(msg);
     } finally {
@@ -196,10 +202,16 @@ export default function LoginPage() {
     router.push('/login');
   };
 
+  // グループ処理状態
+  const [groupLoading, setGroupLoading] = useState(false);
+  const [groupError, setGroupError] = useState('');
+
   // グループ新規作成
   const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!groupName || !currentUser) return;
+    setGroupLoading(true);
+    setGroupError('');
 
     try {
       // 招待コードの生成
@@ -217,16 +229,27 @@ export default function LoginPage() {
         created_at: serverTimestamp()
       });
 
-      // ユーザーのプロフィールを更新
-      await updateDoc(doc(db, 'profiles', currentUser.uid), {
-        group_id: groupId
-      });
+      // ユーザーのプロフィールを更新 (ドキュメントが存在しなくても安全に作成・マージ)
+      await setDoc(doc(db, 'profiles', currentUser.uid), {
+        group_id: groupId,
+        email: currentUser.email,
+        name: profile?.name || currentUser.displayName || currentUser.email?.split('@')[0] || 'ユーザー',
+        updated_at: serverTimestamp()
+      }, { merge: true });
 
       await fetchUserData(currentUser.uid);
       setGroupName('');
     } catch (error: any) {
       console.error('グループ作成エラー:', error);
-      alert('グループの作成に失敗しました。');
+      let msg = `グループ作成エラー: ${error.message || error}`;
+      if (error.code === 'permission-denied') {
+        msg = '【Firestoreルールエラー】セキュリティルールで書き込みが拒否されました。Firebaseコンソールの「Firestore」->「ルール」でアクセスを許可してください。';
+      } else if (error.code === 'not-found') {
+        msg = 'ユーザープロフィールが見つかりません。一度ログアウトして再ログインをお試しください。';
+      }
+      setGroupError(msg);
+    } finally {
+      setGroupLoading(false);
     }
   };
 
@@ -234,6 +257,8 @@ export default function LoginPage() {
   const handleJoinGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteCodeInput || !currentUser) return;
+    setGroupLoading(true);
+    setGroupError('');
 
     try {
       // 招待コードからグループを検索
@@ -244,22 +269,33 @@ export default function LoginPage() {
       const querySnap = await getDocs(groupQuery);
 
       if (querySnap.empty) {
-        alert('指定された招待コードのグループが見つかりません。');
+        setGroupError('指定された招待コードのグループが見つかりません。');
         return;
       }
 
       const targetGroupId = querySnap.docs[0].id;
 
       // ユーザーのプロフィールを更新
-      await updateDoc(doc(db, 'profiles', currentUser.uid), {
-        group_id: targetGroupId
-      });
+      await setDoc(doc(db, 'profiles', currentUser.uid), {
+        group_id: targetGroupId,
+        email: currentUser.email,
+        name: profile?.name || currentUser.displayName || currentUser.email?.split('@')[0] || 'ユーザー',
+        updated_at: serverTimestamp()
+      }, { merge: true });
 
       await fetchUserData(currentUser.uid);
       setInviteCodeInput('');
     } catch (error: any) {
       console.error('グループ参加エラー:', error);
-      alert('グループへの参加に失敗しました。');
+      let msg = 'グループへの参加に失敗しました。';
+      if (error.code === 'permission-denied') {
+        msg = 'Firestore のセキュリティルールでアクセスが拒否されました。';
+      } else if (error.message) {
+        msg = `グループ参加エラー: ${error.message}`;
+      }
+      setGroupError(msg);
+    } finally {
+      setGroupLoading(false);
     }
   };
 
@@ -460,6 +496,12 @@ export default function LoginPage() {
                   </div>
                 </div>
 
+                {groupError && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-medium">
+                    {groupError}
+                  </div>
+                )}
+
                 {/* 新規グループ作成 */}
                 <form onSubmit={handleCreateGroup} className="space-y-3 bg-white p-4 border border-slate-100 rounded-2xl">
                   <div className="flex items-center gap-2 mb-1">
@@ -476,9 +518,10 @@ export default function LoginPage() {
                   />
                   <button
                     type="submit"
-                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs transition-all"
+                    disabled={groupLoading}
+                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs transition-all disabled:opacity-50"
                   >
-                    グループを作成する
+                    {groupLoading ? '作成中...' : 'グループを作成する'}
                   </button>
                 </form>
 
@@ -504,9 +547,10 @@ export default function LoginPage() {
                   />
                   <button
                     type="submit"
-                    className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-semibold text-xs transition-all"
+                    disabled={groupLoading}
+                    className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-semibold text-xs transition-all disabled:opacity-50"
                   >
-                    グループに参加する
+                    {groupLoading ? '参加中...' : 'グループに参加する'}
                   </button>
                 </form>
               </div>
