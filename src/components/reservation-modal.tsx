@@ -254,7 +254,15 @@ export default function ReservationModal({
             ...inputData,
           }),
         });
-        const res = await response.json();
+        
+        const rawText = await response.text();
+        let res: any = {};
+        try {
+          res = rawText ? JSON.parse(rawText) : {};
+        } catch {
+          throw new Error(`サーバーからの応答が無効です (${response.status}): ${rawText.slice(0, 100)}`);
+        }
+
         if (res.success) {
           onSuccess();
           onClose();
@@ -271,7 +279,15 @@ export default function ReservationModal({
           },
           body: JSON.stringify(inputData),
         });
-        const res = await response.json();
+
+        const rawText = await response.text();
+        let res: any = {};
+        try {
+          res = rawText ? JSON.parse(rawText) : {};
+        } catch {
+          throw new Error(`サーバーからの応答が無効です (${response.status}): ${rawText.slice(0, 100)}`);
+        }
+
         if (res.success) {
           if (res.data?.googleCalendarUrl) {
             setSuccessGoogleUrl(res.data.googleCalendarUrl);
@@ -311,7 +327,15 @@ export default function ReservationModal({
           'Authorization': `Bearer ${idToken}`,
         },
       });
-      const res = await response.json();
+
+      const rawText = await response.text();
+      let res: any = {};
+      try {
+        res = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        throw new Error(`サーバーからの応答が無効です (${response.status}): ${rawText.slice(0, 100)}`);
+      }
+
       if (res.success) {
         onSuccess();
         onClose();
@@ -320,7 +344,7 @@ export default function ReservationModal({
       }
     } catch (err: any) {
       console.error('削除エラー:', err);
-      setErrorMessage('削除中に通信エラーが発生しました。');
+      setErrorMessage(`削除エラー: ${err.message || '削除中に通信エラーが発生しました。'}`);
     } finally {
       setSubmitting(false);
     }
