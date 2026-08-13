@@ -62,20 +62,14 @@ export async function createReservation(input: ReservationInput, idToken: string
     const vehicleData = vehicleSnap.data()!;
     const vehicleName = vehicleData.name || '車両';
 
-    // 重複チェック: 前後2日間に絞り込んでチェック
-    const twoDaysAgo = new Date(startDateTime);
-    twoDaysAgo.setDate(startDateTime.getDate() - 2);
-    const twoDaysLater = new Date(startDateTime);
-    twoDaysLater.setDate(startDateTime.getDate() + 2);
-
+    // 重複チェック: 指定された車両のすべての予約を取得して JS 側で重複判定（複合インデックス不要にするため）
     const resSnap = await adminDb.collection('reservations')
       .where('vehicle_id', '==', input.vehicle_id)
-      .where('start_time', '>=', Timestamp.fromDate(twoDaysAgo))
-      .where('start_time', '<=', Timestamp.fromDate(twoDaysLater))
       .get();
 
     const hasConflict = resSnap.docs.some((doc: FirebaseFirestore.QueryDocumentSnapshot) => {
       const data = doc.data();
+      if (!data.start_time || !data.end_time) return false;
       const existingStart = (data.start_time as Timestamp).toDate().getTime();
       const existingEnd = (data.end_time as Timestamp).toDate().getTime();
       return !(startDateTime.getTime() >= existingEnd || endDateTime.getTime() <= existingStart);
@@ -169,20 +163,14 @@ export async function updateReservation(id: string, input: ReservationInput, idT
     if (!resSnap.exists) return { success: false, error: '変更対象の予約が見つかりません。' };
     if (resSnap.data()!.user_id !== uid) return { success: false, error: '他のユーザーの予約を変更する権限がありません。' };
 
-    const twoDaysAgo = new Date(startDateTime);
-    twoDaysAgo.setDate(startDateTime.getDate() - 2);
-    const twoDaysLater = new Date(startDateTime);
-    twoDaysLater.setDate(startDateTime.getDate() + 2);
-
     const conflictSnap = await adminDb.collection('reservations')
       .where('vehicle_id', '==', input.vehicle_id)
-      .where('start_time', '>=', Timestamp.fromDate(twoDaysAgo))
-      .where('start_time', '<=', Timestamp.fromDate(twoDaysLater))
       .get();
 
     const hasConflict = conflictSnap.docs.some((doc: FirebaseFirestore.QueryDocumentSnapshot) => {
       if (doc.id === id) return false;
       const data = doc.data();
+      if (!data.start_time || !data.end_time) return false;
       const existingStart = (data.start_time as Timestamp).toDate().getTime();
       const existingEnd = (data.end_time as Timestamp).toDate().getTime();
       return !(startDateTime.getTime() >= existingEnd || endDateTime.getTime() <= existingStart);

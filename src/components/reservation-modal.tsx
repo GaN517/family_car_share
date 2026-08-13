@@ -197,8 +197,15 @@ export default function ReservationModal({
     setInvitedEmails(invitedEmails.filter((_, i) => i !== index));
   };
 
-  // 送信処理
-  const handleSubmit = async () => {
+  const formatError = (errVal: any, fallback: string) => {
+    if (!errVal) return fallback;
+    if (typeof errVal === 'string') return errVal;
+    if (typeof errVal === 'object' && errVal.message) return errVal.message;
+    return JSON.stringify(errVal);
+  };
+
+  // 送信処理（新規作成・編集）
+  const handleSubmit = async (e: React.FormEvent) => {
     if (!vehicleId || !date || !startTime || !endTime) {
       setErrorMessage('すべての項目を入力してください。');
       return;
@@ -267,7 +274,7 @@ export default function ReservationModal({
           onSuccess();
           onClose();
         } else {
-          setErrorMessage(res.error || '予約の更新に失敗しました。');
+          setErrorMessage(formatError(res.error, '予約の更新に失敗しました。'));
         }
       } else {
         // 新規作成 (POST)
@@ -296,7 +303,7 @@ export default function ReservationModal({
             onClose();
           }
         } else {
-          setErrorMessage(res.error || '予約の作成に失敗しました。');
+          setErrorMessage(formatError(res.error, '予約の作成に失敗しました。'));
         }
       }
     } catch (err: any) {
