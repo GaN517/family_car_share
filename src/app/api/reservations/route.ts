@@ -15,6 +15,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const result = await createReservation(body, idToken);
+    if (!result || typeof result !== 'object' || Object.keys(result).length === 0) {
+      return NextResponse.json({ success: false, error: 'サーバー内部処理で空のレスポンスが生成されました。' }, { status: 500 });
+    }
     return NextResponse.json(result);
   } catch (error: any) {
     console.error('予約作成 API エラー:', error);
@@ -41,6 +44,9 @@ export async function PUT(request: NextRequest) {
     }
 
     const result = await updateReservation(id, inputData, idToken);
+    if (!result || typeof result !== 'object' || Object.keys(result).length === 0) {
+      return NextResponse.json({ success: false, error: 'サーバー内部処理で空のレスポンスが生成されました。' }, { status: 500 });
+    }
     return NextResponse.json(result);
   } catch (error: any) {
     console.error('予約更新 API エラー:', error);
@@ -67,6 +73,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     const result = await deleteReservation(id, idToken);
+    if (!result || typeof result !== 'object' || Object.keys(result).length === 0) {
+      return NextResponse.json({ success: false, error: 'サーバー内部処理で空のレスポンスが生成されました。' }, { status: 500 });
+    }
     return NextResponse.json(result);
   } catch (error: any) {
     console.error('予約削除 API エラー:', error);
