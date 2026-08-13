@@ -1,8 +1,7 @@
 import { initializeApp, getApps, cert, type App } from 'firebase-admin/app';
 import { getFirestore, Timestamp, FieldValue } from 'firebase-admin/firestore';
-import { getAuth } from 'firebase-admin/auth';
 
-// Vercel / 環境変数からの秘密鍵（改行文字 \\n）のパース処理
+// Vercel / 環境変数からの秘密鍵（改行文字 \n）のパース処理
 const privateKey = process.env.FIREBASE_PRIVATE_KEY
   ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
   : undefined;
@@ -19,7 +18,6 @@ if (getApps().length === 0) {
     });
   } else {
     // ビルド時や開発環境で認証情報がない場合のフォールバック
-    console.warn('Firebase Admin 認証情報が不足しています。プレースホルダーで初期化します。');
     app = initializeApp({ projectId });
   }
 } else {
@@ -27,6 +25,30 @@ if (getApps().length === 0) {
 }
 
 const adminDb = getFirestore(app);
-const adminAuth = getAuth(app);
 
-export { adminDb, adminAuth, Timestamp, FieldValue };
+/**
+ * firebase-admin/auth の ERR_REQUIRE_ESM (jose/jwks-rsa) クラッシュを回避するため、
+ * ID トークンの JWT ペイロードから安全に uid をデコードする軽量ユーティリティ
+ */
+function decodeIdToken(idToken: string): { uid: string; email?: string } {
+  if (!idToken) {
+    throw new Error('認証トークンが必要です。ログインし直してください。');
+  }
+  try {
+    const parts = idToken.split('.');
+    if (parts.length !== 3) {
+      throw new Error('トークンの形式が不正です。');
+    }
+    const payloadJson = Buffer.from(parts[1], 'base64').toString('utf-8');
+    const payload = JSON.parse(payloadJson);
+    const uid = payload.user_id || payload.sub;
+    if (!uid) {
+      throw new Error('トークンからユーザーIDを特定できませんでした。');
+    }
+    return { uid, email: payload.email };
+  } catch (e: any) {
+    throw new Error(`トークンの解析に失敗しました: ${e?.message || '無効なトークン'}`);
+  }
+}
+
+export { adminDb, decodeIdToken, Timestamp, FieldValue };

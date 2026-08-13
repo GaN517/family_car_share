@@ -1,4 +1,4 @@
-import { adminDb, adminAuth, Timestamp, FieldValue } from '@/lib/firebase-admin';
+import { adminDb, decodeIdToken, Timestamp, FieldValue } from '@/lib/firebase-admin';
 import { sendInviteEmail } from '@/lib/email';
 import { formatCalendarTemplate, generateGoogleCalendarUrl } from '@/lib/utils';
 
@@ -13,32 +13,10 @@ interface ReservationInput {
 
 /**
  * ID トークンを検証し、UID を取得します。
- * Admin SDK の認証情報がない場合でも、JWT パイロードから安全に UID をパースするフォールバックを備えます。
  */
 async function verifyUser(idToken: string) {
-  if (!idToken) {
-    throw new Error('認証トークンが必要です。ログインし直してください。');
-  }
-
-  try {
-    const decodedToken = await adminAuth.verifyIdToken(idToken);
-    return decodedToken.uid;
-  } catch (adminError: any) {
-    console.warn('adminAuth.verifyIdToken に失敗したため、JWT パイロードのデコードを試みます:', adminError?.message);
-    try {
-      // JWT の payload (2番目の要素) をデコード
-      const parts = idToken.split('.');
-      if (parts.length === 3) {
-        const payloadJson = Buffer.from(parts[1], 'base64').toString('utf-8');
-        const payload = JSON.parse(payloadJson);
-        const uid = payload.user_id || payload.sub;
-        if (uid) return uid;
-      }
-    } catch (parseError) {
-      console.error('JWT パースエラー:', parseError);
-    }
-    throw new Error(`認証トークンの検証に失敗しました: ${adminError?.message || 'トークンが無効です'}`);
-  }
+  const { uid } = decodeIdToken(idToken);
+  return uid;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb, adminAuth, Timestamp } from '@/lib/firebase-admin';
+import { adminDb, decodeIdToken, Timestamp } from '@/lib/firebase-admin';
 
 /**
  * 予約時間帯の重複判定 API
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   const idToken = authHeader.split('Bearer ')[1];
 
   try {
-    await adminAuth.verifyIdToken(idToken);
+    decodeIdToken(idToken);
 
     const startDateTime = new Date(startTime);
     const endDateTime = new Date(endTime);

@@ -1,28 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// 動的インポートで firebase-admin の初期化エラーを安全にキャッチする
 async function getFirebaseAdmin() {
-  const { adminDb, adminAuth, Timestamp, FieldValue } = await import('@/lib/firebase-admin');
-  return { adminDb, adminAuth, Timestamp, FieldValue };
+  const { adminDb, decodeIdToken, Timestamp, FieldValue } = await import('@/lib/firebase-admin');
+  return { adminDb, decodeIdToken, Timestamp, FieldValue };
 }
 
 async function verifyUser(idToken: string) {
-  const { adminAuth } = await getFirebaseAdmin();
-  try {
-    const decoded = await adminAuth.verifyIdToken(idToken);
-    return decoded.uid;
-  } catch (e: any) {
-    // Admin SDK の認証情報がない場合、JWT payload から uid を取得
-    try {
-      const parts = idToken.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
-        const uid = payload.user_id || payload.sub;
-        if (uid) return uid;
-      }
-    } catch {}
-    throw new Error(`認証に失敗しました: ${e?.message || 'トークンが無効です'}`);
-  }
+  const { decodeIdToken } = await getFirebaseAdmin();
+  const { uid } = decodeIdToken(idToken);
+  return uid;
 }
 
 /**
