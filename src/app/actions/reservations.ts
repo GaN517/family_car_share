@@ -59,14 +59,28 @@ export async function createReservation(input: ReservationInput, idToken: string
     const endTimestamp = Timestamp.fromDate(endDateTime);
 
     // ユーザープロフィールの取得
+    let groupId = '';
+    let userName = 'ユーザー';
+
     const profileSnap = await adminDb.collection('profiles').doc(uid).get();
-    if (!profileSnap.exists) {
-      return { success: false, error: 'ユーザープロフィールが見つかりません。設定画面から再度ログインしてください。' };
+    if (profileSnap.exists) {
+      const profileData = profileSnap.data()!;
+      groupId = profileData.group_id || '';
+      userName = profileData.name || userName;
     }
 
-    const profileData = profileSnap.data()!;
-    const groupId = profileData.group_id;
-    const userName = profileData.name || '不明なユーザー';
+    // プロフィールに group_id がない場合、所属グループを直接検索
+    if (!groupId) {
+      const groupSearch = await adminDb.collection('groups').where('members', 'array-contains', uid).limit(1).get();
+      if (!groupSearch.empty) {
+        groupId = groupSearch.docs[0].id;
+      } else {
+        const ownerSearch = await adminDb.collection('groups').where('owner_id', '==', uid).limit(1).get();
+        if (!ownerSearch.empty) {
+          groupId = ownerSearch.docs[0].id;
+        }
+      }
+    }
 
     if (!groupId) {
       return { success: false, error: 'グループに所属していません。設定画面からグループを作成または参加してください。' };

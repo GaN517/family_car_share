@@ -200,8 +200,12 @@ export default function ReservationModal({
   const formatError = (errVal: any, fallback: string) => {
     if (!errVal) return fallback;
     if (typeof errVal === 'string') return errVal;
-    if (typeof errVal === 'object' && errVal.message) return errVal.message;
-    return JSON.stringify(errVal);
+    if (typeof errVal === 'object') {
+      if (errVal.message) return errVal.message;
+      if (errVal.error) return typeof errVal.error === 'string' ? errVal.error : JSON.stringify(errVal.error);
+      return JSON.stringify(errVal);
+    }
+    return String(errVal);
   };
 
   // 送信処理（新規作成・編集）
@@ -303,7 +307,9 @@ export default function ReservationModal({
             onClose();
           }
         } else {
-          setErrorMessage(formatError(res.error, '予約の作成に失敗しました。'));
+          console.error('API 作成返却エラー:', res);
+          const errorMsg = res.error ? formatError(res.error, '予約の作成に失敗しました。') : `作成エラー: ${JSON.stringify(res)}`;
+          setErrorMessage(errorMsg);
         }
       }
     } catch (err: any) {
