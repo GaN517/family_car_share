@@ -103,36 +103,50 @@ export default function LoginPage() {
     try {
       // 1. プロフィールの取得
       const profileRef = doc(db, 'profiles', uid);
-      const profileSnap = await getDoc(profileRef);
+      let profileSnap = await getDoc(profileRef);
 
-      if (profileSnap.exists()) {
-        const profData = profileSnap.data();
-        setProfile(profData);
+      let profData = profileSnap.exists() ? profileSnap.data() : null;
 
-        // 2. 所属グループ情報の取得
-        if (profData.group_id) {
-          const groupRef = doc(db, 'groups', profData.group_id);
-          const groupSnap = await getDoc(groupRef);
+      // カレンダートークンが存在しない場合は自動生成して保存
+      if (!profData || !profData.calendar_token) {
+        const newToken = self.crypto.randomUUID ? self.crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36);
+        const updatedData = {
+          ...(profData || {}),
+          calendar_token: newToken,
+          updated_at: serverTimestamp()
+        };
+        await setDoc(profileRef, updatedData, { merge: true });
+        profData = updatedData;
+      }
+      setProfile(profData);
 
-          if (groupSnap.exists()) {
-            const groupData = groupSnap.data();
-            setGroup({ id: groupSnap.id, ...groupData });
-            setTitleTemplate(groupData.calendar_title_template || '');
-            setDescTemplate(groupData.calendar_description_template || '');
+      // 2. 所属グループ情報の取得
+      if (profData.group_id) {
+        const groupRef = doc(db, 'groups', profData.group_id);
+        const groupSnap = await getDoc(groupRef);
 
-            // 3. 車両一覧の取得
-            const vehiclesQuery = query(
-              collection(db, 'vehicles'),
-              where('group_id', '==', groupSnap.id),
-              orderBy('created_at', 'asc')
-            );
-            const vehiclesSnap = await getDocs(vehiclesQuery);
-            const vehList = vehiclesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setVehicles(vehList);
-          } else {
-            setGroup(null);
-            setVehicles([]);
-          }
+        if (groupSnap.exists()) {
+          const groupData = groupSnap.data();
+          setGroup({ id: groupSnap.id, ...groupData });
+          setTitleTemplate(groupData.calendar_title_template || '');
+          setDescTemplate(groupData.calendar_description_template || '');
+
+          // 3. 車両一覧の取得（インデックス未作成エラーを回避するため orderBy を外して取得）
+          const vehiclesQuery = query(
+            collection(db, 'vehicles'),
+            where('group_id', '==', groupSnap.id)
+          );
+          const vehiclesSnap = await getDocs(vehiclesQuery);
+          const vehList = vehiclesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          
+          // JavaScript側で安全にソート
+          vehList.sort((a: any, b: any) => {
+            const timeA = a.created_at?.seconds || 0;
+            const timeB = b.created_at?.seconds || 0;
+            return timeA - timeB;
+          });
+
+          setVehicles(vehList);
         } else {
           setGroup(null);
           setVehicles([]);
@@ -299,10 +313,15 @@ export default function LoginPage() {
     }
   };
 
+  const [vehicleLoading, setVehicleLoading] = useState(false);
+  const [vehicleError, setVehicleError] = useState('');
+
   // 車両の追加
   const handleAddVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newVehicleName || !group) return;
+    setVehicleLoading(true);
+    setVehicleError('');
 
     try {
       const newVehicleRef = doc(collection(db, 'vehicles'));
@@ -314,10 +333,18 @@ export default function LoginPage() {
       });
 
       setNewVehicleName('');
-      await fetchUserData(currentUser.uid);
+      if (currentUser) {
+        await fetchUserData(currentUser.uid);
+      }
     } catch (error: any) {
       console.error('車両追加エラー:', error);
-      alert('車両の追加に失敗しました。');
+      let msg = `車両の追加に失敗しました: ${error.message || error}`;
+      if (error.code === 'permission-denied') {
+        msg = '【Firestoreルールエラー】書き込み権限がありません。FirebaseコンソールのRulesを確認してください。';
+      }
+      setVehicleError(msg);
+    } finally {
+      setVehicleLoading(false);
     }
   };
 
@@ -354,10 +381,33 @@ export default function LoginPage() {
     }
   };
 
+  // iCal トークンの手動生成・再発行処理
+  const handleRegenerateToken = async () => {
+    if (!currentUser) return;
+    try {
+      const newToken = self.crypto.randomUUID ? self.crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36);
+      await setDoc(doc(db, 'profiles', currentUser.uid), {
+        calendar_token: newToken
+      }, { merge: true });
+      await fetchUserData(currentUser.uid);
+    } catch (err) {
+      console.error('トークン生成エラー:', err);
+      alert('トークンの生成に失敗しました。');
+    }
+  };
+
+  // SSR/クライアントでの origin 安全取得
+  const [origin, setOrigin] = useState('');
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setOrigin(window.location.origin);
+    }
+  }, []);
+
   // iCal 購読 URL コピー処理
   const copyCalendarUrl = () => {
-    if (!profile?.calendar_token) return;
-    const url = `${window.location.origin}/api/calendar/ics?token=${profile.calendar_token}`;
+    if (!profile?.calendar_token || !origin) return;
+    const url = `${origin}/api/calendar/ics?token=${profile.calendar_token}`;
     navigator.clipboard.writeText(url);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
@@ -620,6 +670,12 @@ export default function LoginPage() {
                     </div>
                   )}
 
+                  {vehicleError && (
+                    <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-medium">
+                      {vehicleError}
+                    </div>
+                  )}
+
                   {/* 車両追加フォーム */}
                   <form onSubmit={handleAddVehicle} className="p-4 border border-slate-100 rounded-2xl bg-slate-50/50 space-y-3">
                     <div className="grid grid-cols-2 gap-2">
@@ -651,10 +707,11 @@ export default function LoginPage() {
                     </div>
                     <button
                       type="submit"
-                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs transition-all flex items-center justify-center gap-1 shadow-sm"
+                      disabled={vehicleLoading}
+                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs transition-all flex items-center justify-center gap-1 shadow-sm disabled:opacity-50"
                     >
                       <Plus className="h-4 w-4" />
-                      車両を追加する
+                      {vehicleLoading ? '追加中...' : '車両を追加する'}
                     </button>
                   </form>
                 </div>
@@ -721,22 +778,32 @@ export default function LoginPage() {
                   <p className="text-[10px] text-slate-500 leading-relaxed">
                     以下の URL を Google カレンダーや Apple カレンダーの「URLで購読」に設定することで、予約スケジュールがカレンダーアプリに自動同期されます。
                   </p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      readOnly
-                      value={profile?.calendar_token ? `${window.location.origin}/api/calendar/ics?token=${profile.calendar_token}` : 'トークン生成エラー'}
-                      className="flex-grow bg-white border border-slate-200 text-[10px] px-2.5 py-1.5 rounded-lg text-slate-600 font-mono focus:outline-none truncate"
-                    />
+                  {profile?.calendar_token ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={origin ? `${origin}/api/calendar/ics?token=${profile.calendar_token}` : `.../api/calendar/ics?token=${profile.calendar_token}`}
+                        className="flex-grow bg-white border border-slate-200 text-[10px] px-2.5 py-1.5 rounded-lg text-slate-600 font-mono focus:outline-none truncate"
+                      />
+                      <button
+                        onClick={copyCalendarUrl}
+                        className="p-2 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-slate-600 hover:text-indigo-600 transition-all flex-shrink-0 shadow-sm"
+                        title="URLをコピー"
+                      >
+                        {isCopied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  ) : (
                     <button
-                      onClick={copyCalendarUrl}
-                      className="p-2 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-slate-600 hover:text-indigo-600 transition-all flex-shrink-0 shadow-sm"
-                      title="URLをコピー"
+                      onClick={handleRegenerateToken}
+                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs transition-all shadow-sm"
                     >
-                      {isCopied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                      同期トークンを発行する
                     </button>
-                  </div>
+                  )}
                 </div>
+              </div>
               </div>
             )}
           </div>
