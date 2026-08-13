@@ -87,7 +87,11 @@ export async function GET(request: NextRequest) {
       .get();
 
     // 6. iCal 生成
-    const cal = ical({ name: `${group.name || 'ファミリー'}の車共有カレンダー` });
+    const cal = ical({
+      name: `${group.name || 'ファミリー'}の車共有カレンダー`,
+      timezone: 'Asia/Tokyo',
+    });
+    cal.x('X-WR-TIMEZONE', 'Asia/Tokyo');
 
     resSnap.docs.forEach((doc: FirebaseFirestore.QueryDocumentSnapshot) => {
       const res = doc.data();

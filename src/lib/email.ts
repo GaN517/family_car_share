@@ -49,7 +49,11 @@ export async function sendInviteEmail({
     const end = new Date(endTime);
 
     // 1. iCal (.ics) ファイルの生成
-    const cal = ical({ name: 'ファミリーカーシェア' });
+    const cal = ical({
+      name: 'ファミリーカーシェア',
+      timezone: 'Asia/Tokyo',
+    });
+    cal.x('X-WR-TIMEZONE', 'Asia/Tokyo');
     cal.createEvent({
       start,
       end,

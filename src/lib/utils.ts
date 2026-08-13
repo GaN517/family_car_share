@@ -81,7 +81,7 @@ export const generateGoogleCalendarUrl = (params: {
   const location = params.location ? encodeURIComponent(params.location) : '';
   const dates = `${formatToGoogleCalendarTime(params.startTime)}/${formatToGoogleCalendarTime(params.endTime)}`;
   
-  let url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${dates}&details=${details}&sf=true&output=xml`;
+  let url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${dates}&details=${details}&ctz=Asia/Tokyo&sf=true&output=xml`;
   if (location) {
     url += `&location=${location}`;
   }
