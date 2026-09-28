@@ -9,6 +9,7 @@ import {
   type TimeRange,
 } from '@/lib/server/reservations';
 import { notifyNewReservation } from '@/lib/server/notifications';
+import { runAfterResponse } from '@/lib/server/line';
 import { cancelTransfersForReservations } from '@/lib/server/transfers';
 import { formatCalendarTemplate, generateGoogleCalendarUrl } from '@/lib/utils';
 import {
@@ -62,7 +63,12 @@ export async function POST(request: NextRequest) {
     const ctx = await requireGroupUser(request);
     const body = await readJson(request);
     const first = parseRange(body);
-    const vehicle = await getGroupVehicle(body.vehicle_id, ctx.groupId);
+    // 車両・既存予約・グループ設定を並列に取得
+    const [vehicle, existing, groupSnap] = await Promise.all([
+      getGroupVehicle(body.vehicle_id, ctx.groupId),
+      loadVehicleReservations(String(body.vehicle_id || '')),
+      adminDb.collection('groups').doc(ctx.groupId).get(),
+    ]);
 
     const invitedEmails = sanitizeEmails(body.invited_emails);
     const destination = String(body.destination || '').trim().slice(0, 100);
@@ -81,7 +87,6 @@ export async function POST(request: NextRequest) {
     }
 
     // 重複チェック
-    const existing = await loadVehicleReservations(vehicle.id);
     const conflicts = findConflicts(existing, occurrences);
     if (conflicts.length > 0 && !(body.skip_conflicts && occurrences.length > 1)) {
       return NextResponse.json({
@@ -122,7 +127,6 @@ export async function POST(request: NextRequest) {
     await batch.commit();
 
     // Google カレンダー URL（初回分）とメール本文
-    const groupSnap = await adminDb.collection('groups').doc(ctx.groupId).get();
     const gd = groupSnap.data();
     const vars = {
       vehicle_name: vehicle.name,
@@ -141,8 +145,8 @@ export async function POST(request: NextRequest) {
       endTime: toCreate[0].end,
     });
 
-    // 招待メールと LINE 通知（失敗しても予約自体は成功扱い）
-    const background: Promise<unknown>[] = [
+    // 招待メールと LINE 通知はレスポンス後に送信（完了を待たずに画面へ結果を返す）
+    runAfterResponse('新規予約の LINE 通知エラー', () =>
       notifyNewReservation({
         groupId: ctx.groupId,
         creatorUid: ctx.uid,
@@ -152,10 +156,10 @@ export async function POST(request: NextRequest) {
         recurrenceText,
         destination,
         purpose,
-      }),
-    ];
+      })
+    );
     if (invitedEmails.length > 0) {
-      background.push(
+      runAfterResponse('招待メール送信エラー', () =>
         import('@/lib/email').then(({ sendInviteEmail }) =>
           sendInviteEmail({
             invitedEmails,
@@ -171,8 +175,6 @@ export async function POST(request: NextRequest) {
         )
       );
     }
-    const results = await Promise.allSettled(background);
-    results.forEach((r) => r.status === 'rejected' && console.error('通知送信エラー:', r.reason));
 
     return NextResponse.json({
       success: true,
@@ -208,8 +210,11 @@ export async function PUT(request: NextRequest) {
     const current = snap.data()!;
     if (current.user_id !== ctx.uid) throw new HttpError(403, '他のユーザーの予約を変更する権限がありません。');
 
-    const vehicle = await getGroupVehicle(body.vehicle_id || current.vehicle_id, ctx.groupId);
-    const existing = await loadVehicleReservations(vehicle.id);
+    const vehicleId = body.vehicle_id || current.vehicle_id;
+    const [vehicle, existing] = await Promise.all([
+      getGroupVehicle(vehicleId, ctx.groupId),
+      loadVehicleReservations(vehicleId),
+    ]);
     if (findConflicts(existing, [range], new Set([id])).length > 0) {
       throw new HttpError(409, '指定された時間帯にはすでに他の予約が入っています。');
     }

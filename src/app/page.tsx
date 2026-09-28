@@ -61,7 +61,8 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState<any>(null);
   const [group, setGroup] = useState<any>(null);
   const [vehicles, setVehicles] = useState<any[]>([]);
-  const [reservations, setReservations] = useState<any[]>([]);
+  // グループの全車両の予約（Firestore から購読した生データ）
+  const [allReservations, setAllReservations] = useState<any[]>([]);
   const [groupMembers, setGroupMembers] = useState<Record<string, { name: string; email: string }>>({});
   const [loading, setLoading] = useState(true);
 
@@ -128,19 +129,18 @@ export default function DashboardPage() {
       setProfile(profData);
       
       if (profData.group_id) {
-        // グループ情報の取得
-        const groupRef = doc(db, 'groups', profData.group_id);
-        const groupSnap = await getDoc(groupRef);
+        // グループ情報・メンバー・車両リストを並列に取得（順番に待つと往復回数分だけ遅くなるため）
+        const [groupSnap, membersSnap, vehiclesSnap] = await Promise.all([
+          getDoc(doc(db, 'groups', profData.group_id)),
+          // 同一グループのメンバー全員のプロフィール（ユーザーIDから名前をマッピングするため）
+          getDocs(query(collection(db, 'profiles'), where('group_id', '==', profData.group_id))),
+          getDocs(query(collection(db, 'vehicles'), where('group_id', '==', profData.group_id))),
+        ]);
+
         if (groupSnap.exists()) {
           setGroup({ id: groupSnap.id, ...groupSnap.data() });
         }
 
-        // 同一グループのメンバー全員のプロフィールを取得（ユーザーIDから名前をマッピングするため）
-        const membersQuery = query(
-          collection(db, 'profiles'),
-          where('group_id', '==', profData.group_id)
-        );
-        const membersSnap = await getDocs(membersQuery);
         const membersMap: Record<string, { name: string; email: string }> = {};
         membersSnap.docs.forEach(doc => {
           const data = doc.data();
@@ -151,12 +151,6 @@ export default function DashboardPage() {
         });
         setGroupMembers(membersMap);
 
-        // 車両リストの取得
-        const vehiclesQuery = query(
-          collection(db, 'vehicles'),
-          where('group_id', '==', profData.group_id)
-        );
-        const vehiclesSnap = await getDocs(vehiclesQuery);
         const vehList = vehiclesSnap.docs.map(doc => ({ 
           id: doc.id, 
           name: doc.data().name,
@@ -183,57 +177,72 @@ export default function DashboardPage() {
   };
 
   // 予約データのリアルタイムリスナー設定
+  // グループの全車両の予約をまとめて1回だけ購読し、日付・車両の切り替えは手元で絞り込みます。
+  // （以前は日付を切り替えるたびに購読し直し、車両の全予約を毎回ダウンロードしていたため動作が重くなっていました）
+  const vehicleIdsKey = vehicles.map((v) => v.id).sort().join(',');
   useEffect(() => {
-    if (!selectedVehicleId) {
-      setReservations([]);
+    const vehicleIds = vehicleIdsKey ? vehicleIdsKey.split(',') : [];
+    if (vehicleIds.length === 0) {
+      setAllReservations([]);
       return;
     }
 
-    // 選択された日付 (JST) の 00:00 〜 翌 00:00
-    const { start: startOfDay, end: endOfDay } = jstDayRange(selectedDate);
+    // Firestore の in 条件は最大30件のため分割して購読
+    const chunks: string[][] = [];
+    for (let i = 0; i < vehicleIds.length; i += 30) chunks.push(vehicleIds.slice(i, i + 30));
+    const byChunk: any[][] = chunks.map(() => []);
 
-    // インデックス設定を回避しつつ、日付フィルタを安全に処理するため、
-    // まず車両に紐づくすべての予約を購読し、クライアント側で日付フィルタとソートを行います。
-    const resQuery = query(
-      collection(db, 'reservations'),
-      where('vehicle_id', '==', selectedVehicleId)
+    const unsubscribes = chunks.map((ids, idx) =>
+      onSnapshot(
+        query(collection(db, 'reservations'), where('vehicle_id', 'in', ids)),
+        (querySnapshot) => {
+          byChunk[idx] = querySnapshot.docs
+            .filter((docSnap) => docSnap.data().start_time && docSnap.data().end_time)
+            .map((docSnap) => {
+              const data = docSnap.data();
+              return {
+                id: docSnap.id,
+                vehicle_id: data.vehicle_id,
+                user_id: data.user_id,
+                start_time: data.start_time.toDate().toISOString(),
+                end_time: data.end_time.toDate().toISOString(),
+                invited_emails: data.invited_emails || [],
+                destination: data.destination || '',
+                purpose: data.purpose || '',
+                series_id: data.series_id || null,
+                recurrence_text: data.recurrence_text || null,
+              };
+            });
+          setAllReservations(byChunk.flat());
+        },
+        (error) => {
+          console.error('予約データの購読エラー:', error);
+        }
+      )
     );
 
-    const unsubscribe = onSnapshot(resQuery, (querySnapshot) => {
-      const allReservations = querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data();
-        return {
-          id: docSnap.id,
-          vehicle_id: data.vehicle_id,
-          user_id: data.user_id,
-          start_time: data.start_time.toDate().toISOString(),
-          end_time: data.end_time.toDate().toISOString(),
-          invited_emails: data.invited_emails || [],
-          destination: data.destination || '',
-          purpose: data.purpose || '',
-          series_id: data.series_id || null,
-          recurrence_text: data.recurrence_text || null,
-          profiles: groupMembers[data.user_id] || { name: '不明なユーザー', email: '' }
-        };
-      });
+    return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
+  }, [vehicleIdsKey]);
 
-      // クライアント側での日付フィルタ（その日にかかる予約を表示）
-      const filtered = allReservations.filter(res => {
+  // 選択中の車両・日付 (JST) にかかる予約だけを表示
+  const reservations = useMemo(() => {
+    if (!selectedVehicleId) return [];
+    const { start, end } = jstDayRange(selectedDate);
+    const startMs = start.getTime();
+    const endMs = end.getTime();
+    return allReservations
+      .filter((res) => {
+        if (res.vehicle_id !== selectedVehicleId) return false;
         const resStart = new Date(res.start_time).getTime();
         const resEnd = new Date(res.end_time).getTime();
-        return resStart < endOfDay.getTime() && resEnd > startOfDay.getTime();
-      });
-
-      // 開始時間でソート
-      filtered.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
-
-      setReservations(filtered);
-    }, (error) => {
-      console.error('予約データの購読エラー:', error);
-    });
-
-    return () => unsubscribe();
-  }, [selectedVehicleId, selectedDate, groupMembers]);
+        return resStart < endMs && resEnd > startMs;
+      })
+      .sort((a, b) => a.start_time.localeCompare(b.start_time))
+      .map((res) => ({
+        ...res,
+        profiles: groupMembers[res.user_id] || { name: '不明なユーザー', email: '' },
+      }));
+  }, [allReservations, selectedVehicleId, selectedDate, groupMembers]);
 
   // 譲渡依頼の定期取得（画面に戻ったとき・1分ごと）
   useEffect(() => {
@@ -299,11 +308,9 @@ export default function DashboardPage() {
     setIsModalOpen(true);
   };
 
-  // 予約更新後のコールバック (モーダルでの変更時に再読み込みをトリガー)
-  const handleSuccess = async () => {
-    if (currentUser) {
-      await fetchInitialData(currentUser.uid);
-    }
+  // 予約更新後のコールバック
+  // 予約一覧はリアルタイム購読で自動更新されるため、プロフィール・車両などの再取得は行わない
+  const handleSuccess = () => {
     fetchTransfers();
   };
 

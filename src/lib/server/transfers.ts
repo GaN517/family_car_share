@@ -1,7 +1,7 @@
 import { adminDb, FieldValue, Timestamp } from '@/lib/firebase-admin';
 import { HttpError, type UserContext } from './auth';
 import { describeRange } from './reservations';
-import { buttonsMessage, notifyUsers, openAppAction, textMessage } from './line';
+import { buttonsMessage, notifyUsers, openAppAction, runAfterResponse, textMessage } from './line';
 
 /**
  * 予約枠の譲渡（交渉）
@@ -115,7 +115,7 @@ export async function createTransfer(
       ? `${ctx.name}さんから予約の譲渡依頼が届きました。`
       : `${ctx.name}さんから予約枠を譲りたいという申し出が届きました。`;
   const body = `【${doc.vehicle_name}】${rangeOf(doc)}${message ? `\n「${message}」` : ''}`;
-  await notifyUsers([toUserId], 'transfer', [
+  runAfterResponse('譲渡依頼の通知エラー', () => notifyUsers([toUserId], 'transfer', [
     textMessage(`🔄 ${heading}\n\n${body}`),
     buttonsMessage({
       altText: heading,
@@ -126,7 +126,7 @@ export async function createTransfer(
         ...openAppAction(),
       ],
     }),
-  ]);
+  ]));
 
   return { id: ref.id };
 }
@@ -195,30 +195,32 @@ export async function respondTransfer(uid: string, transferId: string, accept: b
   });
 
   const t = result.transfer;
-  const [fromName, toName] = await Promise.all([getUserName(t.from_user_id), getUserName(t.to_user_id)]);
-  const detail = `【${t.vehicle_name}】${rangeOf(t)}`;
+  runAfterResponse('譲渡結果の通知エラー', async () => {
+    const [fromName, toName] = await Promise.all([getUserName(t.from_user_id), getUserName(t.to_user_id)]);
+    const detail = `【${t.vehicle_name}】${rangeOf(t)}`;
 
-  if (!result.accepted) {
-    await notifyUsers([t.from_user_id], 'transfer', [
-      textMessage(`🙅 ${toName}さんが譲渡の${t.type === 'request' ? '依頼' : '申し出'}をお断りしました。\n\n${detail}${reply ? `\n返信:「${reply}」` : ''}`),
-    ]);
-  } else {
-    const newOwnerName = result.newOwner === t.from_user_id ? fromName : toName;
-    const prevOwnerName = result.newOwner === t.from_user_id ? toName : fromName;
-    await Promise.all([
-      notifyUsers([result.newOwner!], 'transfer', [
-        textMessage(`✅ 予約の譲渡が完了しました。\n${prevOwnerName}さんから引き継いだ予約があなたの予約になりました。\n\n${detail}${reply ? `\n返信:「${reply}」` : ''}`),
-      ]),
-      notifyUsers([t.owner_id], 'transfer', [
-        textMessage(`✅ 予約の譲渡が完了しました。\n以下の予約は${newOwnerName}さんに引き継がれました。\n\n${detail}`),
-      ]),
-      notifyUsers(
-        (result.others || []).map((o) => o.from_user_id).filter((id) => id !== result.newOwner),
-        'transfer',
-        [textMessage(`ℹ️ 以下の予約は別のメンバーへ譲渡されたため、あなたの譲渡依頼は取り消されました。\n\n${detail}`)]
-      ),
-    ]);
-  }
+    if (!result.accepted) {
+      await notifyUsers([t.from_user_id], 'transfer', [
+        textMessage(`🙅 ${toName}さんが譲渡の${t.type === 'request' ? '依頼' : '申し出'}をお断りしました。\n\n${detail}${reply ? `\n返信:「${reply}」` : ''}`),
+      ]);
+    } else {
+      const newOwnerName = result.newOwner === t.from_user_id ? fromName : toName;
+      const prevOwnerName = result.newOwner === t.from_user_id ? toName : fromName;
+      await Promise.all([
+        notifyUsers([result.newOwner!], 'transfer', [
+          textMessage(`✅ 予約の譲渡が完了しました。\n${prevOwnerName}さんから引き継いだ予約があなたの予約になりました。\n\n${detail}${reply ? `\n返信:「${reply}」` : ''}`),
+        ]),
+        notifyUsers([t.owner_id], 'transfer', [
+          textMessage(`✅ 予約の譲渡が完了しました。\n以下の予約は${newOwnerName}さんに引き継がれました。\n\n${detail}`),
+        ]),
+        notifyUsers(
+          (result.others || []).map((o) => o.from_user_id).filter((id) => id !== result.newOwner),
+          'transfer',
+          [textMessage(`ℹ️ 以下の予約は別のメンバーへ譲渡されたため、あなたの譲渡依頼は取り消されました。\n\n${detail}`)]
+        ),
+      ]);
+    }
+  });
 
   return { accepted: result.accepted };
 }
@@ -233,19 +235,23 @@ export async function cancelTransfer(uid: string, transferId: string) {
   if (t.status !== 'pending') throw new HttpError(409, 'この依頼は既に処理されています。');
   await ref.update({ status: 'cancelled', responded_at: FieldValue.serverTimestamp() });
 
-  const fromName = await getUserName(uid);
-  await notifyUsers([t.to_user_id], 'transfer', [
-    textMessage(`↩️ ${fromName}さんが譲渡の${t.type === 'request' ? '依頼' : '申し出'}を取り消しました。\n\n【${t.vehicle_name}】${rangeOf(t)}`),
-  ]);
+  runAfterResponse('譲渡取り消しの通知エラー', async () => {
+    const fromName = await getUserName(uid);
+    await notifyUsers([t.to_user_id], 'transfer', [
+      textMessage(`↩️ ${fromName}さんが譲渡の${t.type === 'request' ? '依頼' : '申し出'}を取り消しました。\n\n【${t.vehicle_name}】${rangeOf(t)}`),
+    ]);
+  });
 }
 
 /** 予約の削除に合わせて、関連する未回答の譲渡依頼を取り消します */
 export async function cancelTransfersForReservations(reservationIds: string[]) {
-  for (const id of reservationIds) {
-    const snap = await transfersCol().where('reservation_id', '==', id).get();
-    const pending = snap.docs.filter((d) => d.data().status === 'pending');
-    await Promise.all(pending.map((d) => d.ref.update({ status: 'cancelled', responded_at: FieldValue.serverTimestamp() })));
-  }
+  await Promise.all(
+    reservationIds.map(async (id) => {
+      const snap = await transfersCol().where('reservation_id', '==', id).get();
+      const pending = snap.docs.filter((d) => d.data().status === 'pending');
+      await Promise.all(pending.map((d) => d.ref.update({ status: 'cancelled', responded_at: FieldValue.serverTimestamp() })));
+    })
+  );
 }
 
 /** ユーザーに関係する譲渡依頼の一覧（回答待ち + 直近30日の履歴） */

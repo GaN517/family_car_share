@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { after } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 
 /**
@@ -121,3 +122,17 @@ export const openAppAction = (label = 'アプリで確認'): LineMessage[] => {
   const appUrl = getAppUrl();
   return appUrl ? [{ type: 'uri', label, uri: appUrl }] : [];
 };
+
+/**
+ * 通知などの時間のかかる処理を、レスポンスを返した後に実行します。
+ * （LINE やメールの送信完了を待たずに画面へ結果を返すため、操作が速くなります）
+ */
+export function runAfterResponse(label: string, task: () => Promise<unknown>) {
+  const run = () => task().catch((e) => console.error(`${label}:`, e));
+  try {
+    after(run);
+  } catch {
+    // リクエスト外（スクリプト実行など）から呼ばれた場合はその場で実行
+    void run();
+  }
+}
