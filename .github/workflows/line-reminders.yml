@@ -1,0 +1,28 @@
+# 予約開始が近いユーザーへの LINE リマインド（1時間ごとに実行）
+# Vercel の Hobby プランでは Cron が1日1回に制限されるため、GitHub Actions から呼び出します。
+# 利用するにはリポジトリの Settings → Secrets and variables → Actions に
+#   APP_URL     … 例: https://your-app.vercel.app
+#   CRON_SECRET … Vercel の環境変数 CRON_SECRET と同じ値
+# を登録してください（未登録の場合は何もせず終了します）。
+name: LINE reminders
+
+on:
+  schedule:
+    - cron: '5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Send upcoming reservation reminders
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "APP_URL / CRON_SECRET が未設定のためスキップします。"
+            exit 0
+          fi
+          curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" "${APP_URL%/}/api/cron/reminders?mode=upcoming"

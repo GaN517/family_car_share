@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, Timestamp } from '@/lib/firebase-admin';
-import ical from 'ical-generator';
 import { formatCalendarTemplate } from '@/lib/utils';
+import { addJstEvent, createJstCalendar } from '@/lib/ical';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
 
     if (vehiclesSnap.empty) {
       // 車両がない場合は空のカレンダーを即返却
-      const cal = ical({ name: `${group.name || 'ファミリー'}の車共有カレンダー` });
+      const cal = createJstCalendar(`${group.name || 'ファミリー'}の車共有カレンダー`);
       return new NextResponse(cal.toString(), {
         headers: {
           'Content-Type': 'text/calendar; charset=utf-8',
@@ -86,12 +86,8 @@ export async function GET(request: NextRequest) {
       .where('vehicle_id', 'in', vehicleIds)
       .get();
 
-    // 6. iCal 生成
-    const cal = ical({
-      name: `${group.name || 'ファミリー'}の車共有カレンダー`,
-      timezone: 'Asia/Tokyo',
-    });
-    cal.x('X-WR-TIMEZONE', 'Asia/Tokyo');
+    // 6. iCal 生成（日本標準時 Asia/Tokyo の VTIMEZONE 付き）
+    const cal = createJstCalendar(`${group.name || 'ファミリー'}の車共有カレンダー`);
 
     resSnap.docs.forEach((doc: FirebaseFirestore.QueryDocumentSnapshot) => {
       const res = doc.data();
@@ -123,14 +119,13 @@ export async function GET(request: NextRequest) {
         purpose,
       });
 
-      cal.createEvent({
+      addJstEvent(cal, {
         id: doc.id,
         start: startTime,
         end: endTime,
         summary: summary,
         description: description,
         location: destination ? `${vehicleName} (${destination})` : vehicleName,
-        timezone: 'Asia/Tokyo',
       });
     });
 
@@ -138,6 +133,7 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',
         'Content-Disposition': `attachment; filename="family-car-share-${groupId}.ics"`,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
       },
     });
   } catch (error) {
