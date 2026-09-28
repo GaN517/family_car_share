@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { formatTime } from '@/lib/utils';
-import { Clock, User, Mail, Edit3, MapPin, Tag } from 'lucide-react';
+import { Clock, Mail, Edit3, MapPin, Tag, Repeat, ArrowRightLeft, Hourglass } from 'lucide-react';
 
 interface Reservation {
   id: string;
@@ -13,6 +13,8 @@ interface Reservation {
   invited_emails: string[];
   destination?: string;
   purpose?: string;
+  series_id?: string | null;
+  recurrence_text?: string | null;
   profiles?: {
     name: string;
     email: string;
@@ -23,13 +25,25 @@ interface TimelineProps {
   reservations: Reservation[];
   currentUserId: string | null;
   onEditReservation: (res: any) => void;
+  /** 他の人の予約に「譲ってほしい」と依頼する */
+  onRequestTransfer?: (res: Reservation) => void;
+  /** 自分の予約を他のメンバーに譲る */
+  onOfferTransfer?: (res: Reservation) => void;
+  /** 自分が関わる回答待ちの譲渡依頼がある予約 ID */
+  pendingTransferIds?: Set<string>;
 }
 
 export default function Timeline({
   reservations,
   currentUserId,
   onEditReservation,
+  onRequestTransfer,
+  onOfferTransfer,
+  pendingTransferIds,
 }: TimelineProps) {
+  // 表示時点の時刻（終了済みの予約には譲渡ボタンを出さない）
+  const [now] = useState(() => Date.now());
+
   if (reservations.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-3xl border border-slate-100 shadow-sm mx-4 my-6 space-y-3">
@@ -55,6 +69,8 @@ export default function Timeline({
           const userName = res.profiles?.name || '不明なユーザー';
           const startTimeStr = formatTime(res.start_time);
           const endTimeStr = formatTime(res.end_time);
+          const isFinished = new Date(res.end_time).getTime() <= now;
+          const hasPendingTransfer = pendingTransferIds?.has(res.id);
 
           return (
             <div key={res.id} className="relative">
@@ -72,18 +88,58 @@ export default function Timeline({
                     <span>{startTimeStr} 〜 {endTimeStr}</span>
                   </div>
 
-                  {/* 自分の予約であれば編集可能 */}
-                  {isOwnReservation && (
-                    <button
-                      onClick={() => onEditReservation(res)}
-                      className="p-1.5 hover:bg-slate-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all flex items-center gap-1"
-                      title="予約を変更"
-                    >
-                      <Edit3 className="h-4 w-4" />
-                      <span className="text-[10px] font-bold">編集</span>
-                    </button>
-                  )}
+                  <div className="flex items-center gap-0.5">
+                    {/* 譲渡（交渉）ボタン */}
+                    {!isFinished && isOwnReservation && onOfferTransfer && (
+                      <button
+                        onClick={() => onOfferTransfer(res)}
+                        className="p-1.5 hover:bg-slate-50 text-slate-400 hover:text-violet-600 rounded-lg transition-all flex items-center gap-1"
+                        title="この予約を他のメンバーに譲る"
+                      >
+                        <ArrowRightLeft className="h-4 w-4" />
+                        <span className="text-[10px] font-bold">譲る</span>
+                      </button>
+                    )}
+                    {!isFinished && !isOwnReservation && onRequestTransfer && (
+                      <button
+                        onClick={() => onRequestTransfer(res)}
+                        className="px-2 py-1 bg-violet-50 hover:bg-violet-100 text-violet-600 rounded-lg transition-all flex items-center gap-1"
+                        title="この予約枠を譲ってもらえるよう依頼する"
+                      >
+                        <ArrowRightLeft className="h-3.5 w-3.5" />
+                        <span className="text-[10px] font-bold">譲ってほしい</span>
+                      </button>
+                    )}
+                    {/* 自分の予約であれば編集可能 */}
+                    {isOwnReservation && (
+                      <button
+                        onClick={() => onEditReservation(res)}
+                        className="p-1.5 hover:bg-slate-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all flex items-center gap-1"
+                        title="予約を変更"
+                      >
+                        <Edit3 className="h-4 w-4" />
+                        <span className="text-[10px] font-bold">編集</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {(res.series_id || hasPendingTransfer) && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {res.series_id && (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md" title={res.recurrence_text || undefined}>
+                        <Repeat className="h-3 w-3" />
+                        繰り返し
+                      </span>
+                    )}
+                    {hasPendingTransfer && (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-md">
+                        <Hourglass className="h-3 w-3" />
+                        譲渡の交渉中
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* 予約者情報 */}
                 <div className="flex items-center gap-2 mb-2.5">

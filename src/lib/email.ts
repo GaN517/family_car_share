@@ -1,6 +1,6 @@
 import { Resend } from 'resend';
-import ical from 'ical-generator';
-import { formatJapaneseDate, formatTime } from './utils';
+import { formatJstRange } from './datetime';
+import { addJstEvent, createJstCalendar } from './ical';
 
 // Resend クライアントの遅延初期化（ビルド時の即座実行を防ぐ）
 let _resend: Resend | null = null;
@@ -20,6 +20,10 @@ interface SendInviteEmailParams {
   endTime: string;
   title: string;
   description: string;
+  /** 繰り返し予約の場合の各回（指定時は startTime/endTime より優先） */
+  occurrences?: { start: Date; end: Date }[];
+  /** 繰り返しの説明（例: "毎週 月曜日 (10月31日(土)まで)"） */
+  recurrenceText?: string;
 }
 
 /**
@@ -33,6 +37,8 @@ export async function sendInviteEmail({
   endTime,
   title,
   description,
+  occurrences,
+  recurrenceText,
 }: SendInviteEmailParams) {
   const resend = getResend();
   if (!resend) {
@@ -45,29 +51,29 @@ export async function sendInviteEmail({
   }
 
   try {
-    const start = new Date(startTime);
-    const end = new Date(endTime);
+    const events = occurrences?.length
+      ? occurrences
+      : [{ start: new Date(startTime), end: new Date(endTime) }];
 
-    // 1. iCal (.ics) ファイルの生成
-    const cal = ical({
-      name: 'ファミリーカーシェア',
-      timezone: 'Asia/Tokyo',
-    });
-    cal.x('X-WR-TIMEZONE', 'Asia/Tokyo');
-    cal.createEvent({
-      start,
-      end,
-      summary: title,
-      description,
-      location: vehicleName,
-      timezone: 'Asia/Tokyo',
-    });
+    // 1. iCal (.ics) ファイルの生成（日本標準時で出力）
+    const cal = createJstCalendar('ファミリーカーシェア');
+    events.forEach((ev) =>
+      addJstEvent(cal, {
+        start: ev.start,
+        end: ev.end,
+        summary: title,
+        description,
+        location: vehicleName,
+      })
+    );
 
     const icsString = cal.toString();
 
-    // 日付と時間の日本語フォーマット
-    const dateStr = formatJapaneseDate(start);
-    const timeStr = `${formatTime(start)} 〜 ${formatTime(end)}`;
+    // 日付と時間の日本語フォーマット（サーバーが UTC でも JST で表示）
+    const dateStr =
+      events.length > 1
+        ? `${recurrenceText || '繰り返し予約'}（全${events.length}回）<br/>初回: ${formatJstRange(events[0].start, events[0].end)}`
+        : formatJstRange(events[0].start, events[0].end);
 
     // 2. メールの送信
     const mailTitle = `【車共有】${userName}さんから「${vehicleName}」の乗車予約に招待されました`;
@@ -84,12 +90,8 @@ export async function sendInviteEmail({
               <td style="padding: 5px 0; color: #111827;">${vehicleName}</td>
             </tr>
             <tr>
-              <td style="padding: 5px 0; color: #4b5563; font-weight: bold;">予約日:</td>
+              <td style="padding: 5px 0; color: #4b5563; font-weight: bold;">日時:</td>
               <td style="padding: 5px 0; color: #111827;">${dateStr}</td>
-            </tr>
-            <tr>
-              <td style="padding: 5px 0; color: #4b5563; font-weight: bold;">時間:</td>
-              <td style="padding: 5px 0; color: #111827;">${timeStr}</td>
             </tr>
           </table>
         </div>

@@ -1,5 +1,4 @@
-import { format } from 'date-fns';
-import { ja } from 'date-fns/locale';
+import { formatJstDate, toJstHm } from './datetime';
 
 /**
  * 二つの時間枠が重複しているかどうかを判定します。
@@ -21,19 +20,14 @@ export const areRangesOverlapping = (
 
 /**
  * 日付を日本語表記（例: "8月13日(水)"）にフォーマットします。
+ * サーバー (UTC) で実行されても日本標準時で表示されるよう JST 固定で計算します。
  */
-export const formatJapaneseDate = (date: Date | string | number): string => {
-  const d = new Date(date);
-  return format(d, 'M月d日(E)', { locale: ja });
-};
+export const formatJapaneseDate = (date: Date | string | number): string => formatJstDate(date);
 
 /**
- * 時間を日本語表記（例: "14:30"）にフォーマットします。
+ * 時間を日本語表記（例: "14:30"）にフォーマットします（日本標準時）。
  */
-export const formatTime = (date: Date | string | number): string => {
-  const d = new Date(date);
-  return format(d, 'HH:mm');
-};
+export const formatTime = (date: Date | string | number): string => toJstHm(date);
 
 /**
  * テンプレート文字列のプレースホルダーを実際の値に置換します。

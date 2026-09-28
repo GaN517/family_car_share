@@ -10,8 +10,10 @@ import {
   createUserWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
-  updateProfile
+  updateProfile,
+  sendPasswordResetEmail
 } from 'firebase/auth';
+import LineSettings from '@/components/line-settings';
 import { 
   doc, 
   getDoc, 
@@ -22,7 +24,6 @@ import {
   where, 
   getDocs, 
   deleteDoc,
-  orderBy,
   serverTimestamp
 } from 'firebase/firestore';
 import { 
@@ -38,7 +39,9 @@ import {
   Check, 
   LogOut, 
   ChevronRight,
-  Info
+  Info,
+  KeyRound,
+  Mail
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -49,8 +52,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isResetMode, setIsResetMode] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
 
   // ユーザー・グループ情報ステート
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -207,6 +212,60 @@ export default function LoginPage() {
       setErrorMessage(msg);
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  // パスワード再設定メールの送信
+  const sendResetEmail = async (targetEmail: string) => {
+    auth.languageCode = 'ja';
+    const continueUrl = typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined;
+    try {
+      await sendPasswordResetEmail(auth, targetEmail, continueUrl ? { url: continueUrl } : undefined);
+    } catch (error: any) {
+      // 戻り先 URL のドメインが Firebase に未登録の場合は、戻り先なしで再送
+      if (error?.code === 'auth/unauthorized-continue-uri' || error?.code === 'auth/invalid-continue-uri') {
+        await sendPasswordResetEmail(auth, targetEmail);
+      } else {
+        throw error;
+      }
+    }
+  };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setErrorMessage('');
+    setInfoMessage('');
+    try {
+      await sendResetEmail(email.trim());
+      setInfoMessage(`${email.trim()} 宛てにパスワード再設定用のメールを送信しました（登録済みのアドレスの場合のみ届きます）。メール内のリンクから新しいパスワードを設定してください。届かない場合は迷惑メールフォルダもご確認ください。`);
+    } catch (error: any) {
+      console.error('パスワード再設定メール送信エラー:', error);
+      let msg = `送信に失敗しました (${error.code || '不明'})。`;
+      if (error.code === 'auth/invalid-email') {
+        msg = 'メールアドレスの形式が正しくありません。';
+      } else if (error.code === 'auth/user-not-found') {
+        msg = 'このメールアドレスのアカウントは登録されていません。';
+      } else if (error.code === 'auth/too-many-requests') {
+        msg = '短時間に何度も送信されました。しばらく時間を置いてから再度お試しください。';
+      }
+      setErrorMessage(msg);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // ログイン中のユーザー向け: パスワード変更用メールの送信
+  const [accountMessage, setAccountMessage] = useState('');
+  const handleSendResetForCurrentUser = async () => {
+    if (!currentUser?.email) return;
+    if (!confirm(`${currentUser.email} 宛てにパスワード再設定用のメールを送信しますか？`)) return;
+    try {
+      await sendResetEmail(currentUser.email);
+      setAccountMessage('パスワード再設定用のメールを送信しました。メール内のリンクから新しいパスワードを設定してください。');
+    } catch (error: any) {
+      console.error('パスワード再設定メール送信エラー:', error);
+      setAccountMessage(`メールの送信に失敗しました (${error.code || error.message})。`);
     }
   };
 
@@ -437,9 +496,50 @@ export default function LoginPage() {
         {!currentUser ? (
           <div className="p-6 flex-grow flex flex-col justify-center">
             <h2 className="text-xl font-bold text-slate-800 text-center mb-6">
-              {isSignUp ? 'アカウントを作成' : 'ログイン'}
+              {isResetMode ? 'パスワードの再設定' : isSignUp ? 'アカウントを作成' : 'ログイン'}
             </h2>
 
+            {isResetMode ? (
+              <form onSubmit={handlePasswordReset} className="space-y-4">
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  登録したメールアドレスを入力してください。パスワード再設定用のリンクをお送りします。
+                </p>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">メールアドレス</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="example@family.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all"
+                    />
+                  </div>
+                </div>
+
+                {errorMessage && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-medium">
+                    {errorMessage}
+                  </div>
+                )}
+                {infoMessage && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-medium leading-relaxed">
+                    {infoMessage}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-sm shadow-lg shadow-indigo-600/10 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <KeyRound className="h-4 w-4" />
+                  {authLoading ? '送信中...' : '再設定メールを送信する'}
+                </button>
+              </form>
+            ) : (
             <form onSubmit={handleAuth} className="space-y-4">
               {isSignUp && (
                 <div>
@@ -502,13 +602,38 @@ export default function LoginPage() {
                 {authLoading ? '処理中...' : isSignUp ? '会員登録する' : 'ログインする'}
               </button>
             </form>
+            )}
 
-            <div className="mt-6 text-center">
+            <div className="mt-6 text-center space-y-3">
+              {!isSignUp && !isResetMode && (
+                <button
+                  onClick={() => {
+                    setIsResetMode(true);
+                    setErrorMessage('');
+                    setInfoMessage('');
+                  }}
+                  className="block w-full text-xs text-slate-500 hover:text-indigo-600 font-semibold"
+                >
+                  パスワードをお忘れの方はこちら
+                </button>
+              )}
               <button
-                onClick={() => setIsSignUp(!isSignUp)}
-                className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
+                onClick={() => {
+                  if (isResetMode) {
+                    setIsResetMode(false);
+                  } else {
+                    setIsSignUp(!isSignUp);
+                  }
+                  setErrorMessage('');
+                  setInfoMessage('');
+                }}
+                className="block w-full text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
               >
-                {isSignUp ? '既にアカウントをお持ちの方はこちら (ログイン)' : '新しいアカウントを作成する (新規登録)'}
+                {isResetMode
+                  ? 'ログイン画面に戻る'
+                  : isSignUp
+                    ? '既にアカウントをお持ちの方はこちら (ログイン)'
+                    : '新しいアカウントを作成する (新規登録)'}
               </button>
             </div>
           </div>
@@ -534,6 +659,23 @@ export default function LoginPage() {
                 <LogOut className="h-5 w-5" />
               </button>
             </div>
+
+            {/* アカウント設定: パスワード変更 */}
+            <div className="flex items-center justify-between gap-2 px-1">
+              <span className="text-[10px] text-slate-400">パスワードを変更したい場合はメールで再設定できます。</span>
+              <button
+                onClick={handleSendResetForCurrentUser}
+                className="px-2.5 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-[10px] font-bold flex items-center gap-1 flex-shrink-0"
+              >
+                <KeyRound className="h-3 w-3" />
+                パスワード再設定
+              </button>
+            </div>
+            {accountMessage && (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl text-[11px]">
+                {accountMessage}
+              </div>
+            )}
 
             {/* グループ未所属時 */}
             {!group ? (
@@ -768,6 +910,9 @@ export default function LoginPage() {
                     </button>
                   </form>
                 </div>
+
+                {/* LINE 公式アカウント連携 */}
+                <LineSettings />
 
                 {/* iCal購読用連携 */}
                 <div className="space-y-3 bg-indigo-50/30 p-4 border border-indigo-100/30 rounded-2xl">
