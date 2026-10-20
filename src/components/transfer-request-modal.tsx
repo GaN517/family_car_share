@@ -3,7 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { formatJstRange } from '@/lib/datetime';
-import { X, ArrowRightLeft, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { ArrowRightLeft, Check } from 'lucide-react';
+import Sheet from '@/components/ui/sheet';
+import { Avatar, Button, FieldLabel, Notice } from '@/components/ui/primitives';
 
 interface TransferTarget {
   id: string;
@@ -50,12 +53,11 @@ export default function TransferRequestModal({
     }
   }, [isOpen, members]);
 
-  if (!isOpen || !reservation) return null;
-
-  const ownerName = reservation.profiles?.name || '予約者';
+  const ownerName = reservation?.profiles?.name || '予約者';
   const recipientName = mode === 'request' ? ownerName : members.find((m) => m.uid === toUserId)?.name || '';
 
   const handleSubmit = async () => {
+    if (!reservation) return;
     if (mode === 'offer' && !toUserId) {
       setError('譲渡先のメンバーを選択してください。');
       return;
@@ -81,113 +83,101 @@ export default function TransferRequestModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
-      <div className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-100 flex flex-col max-h-[92vh] animate-slide-up sm:animate-fade-in">
-        <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/50 rounded-t-3xl">
-          <h3 className="text-base font-bold text-slate-800 flex items-center gap-1.5">
-            <ArrowRightLeft className="h-4.5 w-4.5 text-violet-600" />
-            {mode === 'request' ? '予約枠の譲渡を依頼' : '予約枠を譲る'}
-          </h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-all">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {done ? (
-          <div className="p-6 flex flex-col items-center text-center space-y-4">
-            <div className="h-14 w-14 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center">
-              <CheckCircle2 className="h-8 w-8" />
-            </div>
-            <p className="text-sm font-bold text-slate-800">{recipientName}さんに送信しました</p>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              相手が承諾すると予約の名義が切り替わります。回答状況は画面上部の「譲渡」ボタンから確認できます。
-              <br />
-              LINE 連携済みの場合は LINE にも通知されます。
-            </p>
-            <button onClick={onClose} className="w-full py-3 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-2xl font-semibold text-xs">
-              閉じる
-            </button>
-          </div>
+    <Sheet
+      open={isOpen && !!reservation}
+      onClose={onClose}
+      testId="transfer-sheet"
+      icon={<ArrowRightLeft className="h-5 w-5 text-violet-600" />}
+      title={mode === 'request' ? '譲ってほしい' : '予約を譲る'}
+      footer={
+        done ? (
+          <Button variant="secondary" className="w-full" onClick={onClose}>
+            閉じる
+          </Button>
         ) : (
-          <div className="p-5 space-y-4 overflow-y-auto">
-            <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-700 space-y-1">
+          <Button
+            variant="violet"
+            className="w-full"
+            onClick={handleSubmit}
+            loading={submitting}
+            disabled={mode === 'offer' && members.length === 0}
+            data-testid="submit-transfer"
+          >
+            {mode === 'request' ? `${ownerName}さんに依頼` : '譲渡を申し出る'}
+          </Button>
+        )
+      }
+    >
+      {reservation && (
+        <AnimatePresence mode="wait" initial={false}>
+          {done ? (
+            <motion.div key="done" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center gap-4 py-6 text-center" data-testid="transfer-done">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 14 }}
+                className="flex h-18 w-18 items-center justify-center rounded-full bg-gradient-to-b from-violet-400 to-violet-600 text-white"
+              >
+                <Check className="h-9 w-9" strokeWidth={3} />
+              </motion.div>
+              <p className="text-[18px] font-extrabold text-ink">{recipientName}さんに送信しました</p>
+            </motion.div>
+          ) : (
+            <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
+              <div className="glass flex items-center gap-3 rounded-[22px] p-4">
+                <Avatar name={ownerName} seed={reservation.user_id} size={44} />
+                <div className="min-w-0">
+                  <div className="text-[13px] font-bold text-slate-500">
+                    {ownerName}・{vehicleName}
+                  </div>
+                  <div className="text-[17px] font-extrabold text-ink tabular-nums">{formatJstRange(reservation.start_time, reservation.end_time)}</div>
+                </div>
+              </div>
+
+              {mode === 'offer' && (
+                <div>
+                  <FieldLabel>譲る相手</FieldLabel>
+                  {members.length === 0 ? (
+                    <p className="text-[13px] font-semibold text-slate-400">他のメンバーがいません</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {members.map((m) => (
+                        <motion.button
+                          key={m.uid}
+                          type="button"
+                          whileTap={{ scale: 0.94 }}
+                          onClick={() => setToUserId(m.uid)}
+                          className={`flex items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-4 text-[14px] font-bold transition-colors ${
+                            toUserId === m.uid ? 'border-transparent bg-ink text-white' : 'border-slate-900/8 bg-white/70 text-slate-600'
+                          }`}
+                        >
+                          <Avatar name={m.name} seed={m.uid} size={28} />
+                          {m.name}
+                        </motion.button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
-                <span className="text-slate-400 font-bold mr-2">車両</span>
-                {vehicleName}
+                <FieldLabel htmlFor="transfer-message">メッセージ</FieldLabel>
+                <textarea
+                  id="transfer-message"
+                  rows={3}
+                  maxLength={500}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="任意"
+                  className="glass-input px-4 py-3"
+                />
               </div>
-              <div>
-                <span className="text-slate-400 font-bold mr-2">日時</span>
-                {formatJstRange(reservation.start_time, reservation.end_time)}
-              </div>
-              <div>
-                <span className="text-slate-400 font-bold mr-2">予約者</span>
-                {ownerName}
-              </div>
-            </div>
 
-            {mode === 'offer' && (
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-1.5">譲渡先のメンバー</label>
-                {members.length === 0 ? (
-                  <p className="text-xs text-slate-400">グループに他のメンバーがいません。</p>
-                ) : (
-                  <select
-                    value={toUserId}
-                    onChange={(e) => setToUserId(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  >
-                    {members.map((m) => (
-                      <option key={m.uid} value={m.uid}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            )}
-
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 mb-1.5">
-                メッセージ <span className="text-slate-400 font-normal">(任意・交渉内容や理由など)</span>
-              </label>
-              <textarea
-                rows={3}
-                maxLength={500}
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder={
-                  mode === 'request'
-                    ? '例：病院の送迎で急ぎ車が必要になりました。代わりに土曜の枠をお譲りできます。'
-                    : '例：予定がなくなったので使ってください。'
-                }
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-              />
-            </div>
-
-            <p className="text-[10px] text-slate-400 leading-relaxed">
-              {mode === 'request'
-                ? `${ownerName}さんが承諾すると、この予約はあなたの予約になります。`
-                : '相手が承諾すると、この予約は相手の予約になります（行き先・同乗者などの情報はリセットされます）。'}
-            </p>
-
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-100 text-red-600 rounded-xl text-xs font-semibold flex gap-1.5 items-start">
-                <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <button
-              onClick={handleSubmit}
-              disabled={submitting || (mode === 'offer' && members.length === 0)}
-              className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl font-bold text-sm shadow-lg shadow-violet-600/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />}
-              {mode === 'request' ? '譲渡を依頼する' : '譲渡を申し出る'}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+              <Notice kind="error">{error}</Notice>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
+    </Sheet>
   );
 }

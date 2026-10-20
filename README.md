@@ -63,9 +63,35 @@ Firebase Authentication の `sendPasswordResetEmail` を使用します。メー
 
 `transfer_requests` と `line_link_codes` はサーバー（Admin SDK）経由でのみ読み書きするため、クライアント向けのセキュリティルールでは許可不要です。
 
+## リリースノートの LINE 配信
+
+`src/lib/release-notes.ts` の `LATEST_RELEASE` を更新して本番デプロイすると、Vercel のデプロイ完了 (GitHub の `deployment_status`) をきっかけに `.github/workflows/line-release-notes.yml` が `/api/line/release-notes` を呼び出し、LINE 連携済みの全ユーザーへ配信します。
+
+- 同じ `version` は Firestore の `release_broadcasts/{version}` で排他し、二重配信しません
+- `POST /api/line/release-notes?dry_run=1` で宛先数と本文だけを確認できます（`Authorization: Bearer <CRON_SECRET>`）
+- Actions シークレットの `APP_URL` と `CRON_SECRET` を使用します（リマインドと共通）
+
 ## 開発
 
 ```bash
 npm install
 npm run dev
 ```
+
+## E2E テスト
+
+Firebase エミュレータ（Auth / Firestore）と本番ビルドの Next.js を起動し、Playwright でスマートフォン表示のブラウザを実際に操作してテストします（Java が必要です）。
+
+```bash
+npm run test:e2e
+```
+
+## UI で使用している技術
+
+| 技術 | 選定理由 |
+| --- | --- |
+| Next.js + Firebase + Vercel | 既存の構成を維持 |
+| Tailwind CSS v4 | 既存。Liquid Glass 用のユーティリティ（`glass` / `glass-input` / `skeleton`）を `globals.css` に定義 |
+| Motion (`motion/react`) | スプリング・レイアウトアニメーション・ドラッグ（シートを下へスワイプで閉じる、日付スワイプ）・出入りアニメーションを1つのライブラリで実現。`reducedMotion="user"` で OS の視差効果を減らす設定にも追従 |
+| CSS `backdrop-filter` | 追加ライブラリなしでガラスの透過・ぼかしを表現（iOS Safari / Android Chrome 対応） |
+| Playwright + Firebase Emulator | 本物のブラウザ・本物の Firebase SDK で、家族2人の同時操作やリアルタイム反映まで検証 |

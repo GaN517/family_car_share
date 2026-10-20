@@ -3,7 +3,10 @@
 import React, { useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { formatJstRange } from '@/lib/datetime';
-import { X, ArrowRightLeft, Loader2, Inbox, Send, AlertCircle } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { ArrowRightLeft } from 'lucide-react';
+import Sheet from '@/components/ui/sheet';
+import { Avatar, Button, Notice } from '@/components/ui/primitives';
 
 export interface TransferItem {
   id: string;
@@ -31,10 +34,10 @@ interface TransferInboxProps {
 }
 
 const STATUS_LABEL: Record<TransferItem['status'], { label: string; className: string }> = {
-  pending: { label: '回答待ち', className: 'bg-amber-100 text-amber-700' },
-  accepted: { label: '譲渡成立', className: 'bg-emerald-100 text-emerald-700' },
-  declined: { label: 'お断り', className: 'bg-slate-200 text-slate-600' },
-  cancelled: { label: '取り消し', className: 'bg-slate-100 text-slate-400' },
+  pending: { label: '回答待ち', className: 'bg-amber-500/12 text-amber-700' },
+  accepted: { label: '成立', className: 'bg-emerald-500/12 text-emerald-700' },
+  declined: { label: 'お断り', className: 'bg-slate-900/6 text-slate-500' },
+  cancelled: { label: '取り消し', className: 'bg-slate-900/5 text-slate-400' },
 };
 
 /** 譲渡依頼の受信箱・送信済み一覧（承諾・辞退・取り消し） */
@@ -44,8 +47,6 @@ export default function TransferInbox({ isOpen, onClose, incoming, outgoing, onC
   const [replyFor, setReplyFor] = useState<string | null>(null);
   const [reply, setReply] = useState('');
   const [error, setError] = useState('');
-
-  if (!isOpen) return null;
 
   const act = async (id: string, action: 'accept' | 'decline' | 'cancel', message = '') => {
     if (action === 'accept' && !confirm('譲渡を承諾しますか？予約の名義が切り替わります。')) return;
@@ -67,142 +68,126 @@ export default function TransferInbox({ isOpen, onClose, incoming, outgoing, onC
   const pendingIncoming = incoming.filter((t) => t.status === 'pending').length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
-      <div className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-100 flex flex-col max-h-[92vh] sm:max-h-[85vh] animate-slide-up sm:animate-fade-in">
-        <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/50 rounded-t-3xl">
-          <h3 className="text-base font-bold text-slate-800 flex items-center gap-1.5">
-            <ArrowRightLeft className="h-4.5 w-4.5 text-violet-600" />
-            予約の譲渡
-          </h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-all">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="flex gap-1 p-2 border-b border-slate-100">
-          {(['incoming', 'outgoing'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all ${
-                tab === t ? 'bg-violet-600 text-white' : 'text-slate-500 hover:bg-slate-50'
-              }`}
-            >
-              {t === 'incoming' ? <Inbox className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
-              {t === 'incoming' ? '受け取った依頼' : '送った依頼'}
-              {t === 'incoming' && pendingIncoming > 0 && (
-                <span className={`ml-1 px-1.5 rounded-full text-[10px] ${tab === t ? 'bg-white text-violet-600' : 'bg-rose-500 text-white'}`}>
-                  {pendingIncoming}
-                </span>
+    <Sheet open={isOpen} onClose={onClose} testId="transfer-inbox" icon={<ArrowRightLeft className="h-5 w-5 text-violet-600" />} title="予約の譲渡">
+      <div className="glass sticky top-0 z-10 mb-4 flex rounded-full p-1">
+        {(['incoming', 'outgoing'] as const).map((k) => (
+          <button key={k} onClick={() => setTab(k)} className="relative flex-1 rounded-full py-2.5 text-[14px] font-bold">
+            {tab === k && (
+              <motion.span layoutId="inbox-tab" className="absolute inset-0 rounded-full bg-white shadow-[0_4px_14px_-6px_rgba(15,23,42,0.3)]" />
+            )}
+            <span className={`relative inline-flex items-center gap-1.5 ${tab === k ? 'text-ink' : 'text-slate-500'}`}>
+              {k === 'incoming' ? '受け取った' : '送った'}
+              {k === 'incoming' && pendingIncoming > 0 && (
+                <span className="rounded-full bg-rose-500 px-1.5 text-[11px] text-white">{pendingIncoming}</span>
               )}
-            </button>
-          ))}
-        </div>
+            </span>
+          </button>
+        ))}
+      </div>
 
-        <div className="p-4 overflow-y-auto space-y-3 flex-grow">
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-100 text-red-600 rounded-xl text-xs font-semibold flex gap-1.5 items-start">
-              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
+      <div className="space-y-3">
+        <Notice kind="error">{error}</Notice>
 
+        <AnimatePresence mode="popLayout" initial={false}>
           {list.length === 0 ? (
-            <p className="text-xs text-slate-400 text-center py-10">
-              {tab === 'incoming' ? '受け取った譲渡依頼はありません。' : '送った譲渡依頼はありません。'}
-            </p>
+            <motion.p key={`empty-${tab}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="py-12 text-center text-[14px] font-bold text-slate-400">
+              なし
+            </motion.p>
           ) : (
-            list.map((t) => {
+            list.map((t, i) => {
               const status = STATUS_LABEL[t.status];
               const counterpart = tab === 'incoming' ? t.from_user_name : t.to_user_name;
+              const counterpartId = tab === 'incoming' ? t.from_user_id : t.to_user_id;
               const heading =
                 tab === 'incoming'
                   ? t.type === 'request'
-                    ? `${counterpart}さんが「譲ってほしい」と依頼しています`
-                    : `${counterpart}さんが予約を譲りたいと申し出ています`
+                    ? '譲ってほしいと依頼'
+                    : '譲りたいと申し出'
                   : t.type === 'request'
-                    ? `${counterpart}さんに譲渡を依頼しました`
-                    : `${counterpart}さんに譲渡を申し出ました`;
+                    ? '譲渡を依頼済み'
+                    : '譲渡を申し出済み';
               const busy = busyId === t.id;
 
               return (
-                <div key={t.id} className="border border-slate-100 rounded-2xl p-3.5 shadow-sm space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-xs font-bold text-slate-800 leading-snug">{heading}</p>
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0 ${status.className}`}>{status.label}</span>
+                <motion.div
+                  key={`${tab}-${t.id}`}
+                  layout
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  transition={{ type: 'spring', stiffness: 320, damping: 28, delay: i * 0.04 }}
+                  className="glass space-y-3 rounded-[22px] p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <Avatar name={counterpart} seed={counterpartId} size={40} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-[15px] font-extrabold text-ink">{counterpart}</span>
+                        <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${status.className}`}>{status.label}</span>
+                      </div>
+                      <div className="text-[12px] font-semibold text-slate-500">{heading}</div>
+                    </div>
                   </div>
-                  <p className="text-[11px] text-slate-600">
-                    🚗 {t.vehicle_name} ・ {formatJstRange(t.start_time, t.end_time)}
-                  </p>
-                  {t.message && <p className="text-[11px] text-slate-600 bg-slate-50 rounded-lg p-2">「{t.message}」</p>}
-                  {t.response_message && (
-                    <p className="text-[11px] text-slate-600 bg-violet-50 rounded-lg p-2">返信:「{t.response_message}」</p>
-                  )}
+                  <div className="rounded-2xl bg-white/60 px-3 py-2 text-[14px] font-bold text-ink tabular-nums">
+                    {t.vehicle_name}・{formatJstRange(t.start_time, t.end_time)}
+                  </div>
+                  {t.message && <p className="text-[13px] text-slate-600">「{t.message}」</p>}
+                  {t.response_message && <p className="rounded-2xl bg-violet-500/8 px-3 py-2 text-[13px] text-slate-600">返信:「{t.response_message}」</p>}
 
                   {t.status === 'pending' && tab === 'incoming' && (
-                    <>
+                    <AnimatePresence mode="wait" initial={false}>
                       {replyFor === t.id ? (
-                        <div className="space-y-2">
+                        <motion.div key="reply" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="space-y-2 overflow-hidden">
                           <textarea
                             rows={2}
                             maxLength={500}
                             value={reply}
                             onChange={(e) => setReply(e.target.value)}
-                            placeholder="お断りの理由や代わりの提案（任意）"
-                            className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                            placeholder="返信（任意）"
+                            className="glass-input px-3 py-2"
                           />
                           <div className="flex gap-2">
-                            <button onClick={() => setReplyFor(null)} className="flex-1 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-500">
+                            <Button variant="secondary" size="sm" className="flex-1" onClick={() => setReplyFor(null)}>
                               戻る
-                            </button>
-                            <button
-                              disabled={busy}
-                              onClick={() => act(t.id, 'decline', reply)}
-                              className="flex-1 py-2 bg-slate-700 text-white rounded-xl text-xs font-bold disabled:opacity-50"
-                            >
-                              {busy ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'お断りを送信'}
-                            </button>
+                            </Button>
+                            <Button variant="dark" size="sm" className="flex-1" loading={busy} onClick={() => act(t.id, 'decline', reply)}>
+                              お断りを送信
+                            </Button>
                           </div>
-                        </div>
+                        </motion.div>
                       ) : (
-                        <div className="flex gap-2">
-                          <button
+                        <motion.div key="actions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="flex-1"
                             disabled={busy}
                             onClick={() => {
                               setReplyFor(t.id);
                               setReply('');
                             }}
-                            className="flex-1 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-600 disabled:opacity-50"
                           >
-                            お断りする
-                          </button>
-                          <button
-                            disabled={busy}
-                            onClick={() => act(t.id, 'accept')}
-                            className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold disabled:opacity-50"
-                          >
-                            {busy ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : '承諾する'}
-                          </button>
-                        </div>
+                            お断り
+                          </Button>
+                          <Button variant="violet" size="sm" className="flex-1" loading={busy} onClick={() => act(t.id, 'accept')}>
+                            承諾
+                          </Button>
+                        </motion.div>
                       )}
-                    </>
+                    </AnimatePresence>
                   )}
 
                   {t.status === 'pending' && tab === 'outgoing' && (
-                    <button
-                      disabled={busy}
-                      onClick={() => act(t.id, 'cancel')}
-                      className="w-full py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-500 disabled:opacity-50"
-                    >
-                      {busy ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : '依頼を取り消す'}
-                    </button>
+                    <Button variant="secondary" size="sm" className="w-full" loading={busy} onClick={() => act(t.id, 'cancel')}>
+                      依頼を取り消す
+                    </Button>
                   )}
-                </div>
+                </motion.div>
               );
             })
           )}
-        </div>
+        </AnimatePresence>
       </div>
-    </div>
+    </Sheet>
   );
 }

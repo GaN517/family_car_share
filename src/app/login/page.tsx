@@ -26,23 +26,26 @@ import {
   deleteDoc,
   serverTimestamp
 } from 'firebase/firestore';
-import { 
-  Car, 
-  User as UserIcon, 
-  Lock, 
-  Users, 
-  Settings, 
-  Calendar, 
-  Plus, 
-  Trash2, 
-  Copy, 
-  Check, 
-  LogOut, 
-  ChevronRight,
-  Info,
+import { AnimatePresence, motion } from 'motion/react';
+import {
+  Car,
+  User as UserIcon,
+  Lock,
+  Users,
+  Calendar,
+  Plus,
+  Trash2,
+  Copy,
+  Check,
+  LogOut,
+  ChevronLeft,
+  ChevronDown,
   KeyRound,
-  Mail
+  Mail,
+  FileText,
 } from 'lucide-react';
+import { SettingsSkeleton } from '@/components/skeletons';
+import { Avatar, Button, FieldLabel, Notice, vehicleColor } from '@/components/ui/primitives';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -190,8 +193,9 @@ export default function LoginPage() {
 
         await fetchUserData(user.uid);
       } else {
-        // ログイン
+        // ログイン後は予約画面へ
         await signInWithEmailAndPassword(auth, email, password);
+        router.replace('/');
       }
     } catch (error: any) {
       console.error('認証エラー:', error);
@@ -358,6 +362,7 @@ export default function LoginPage() {
 
       await fetchUserData(currentUser.uid);
       setInviteCodeInput('');
+      router.push('/');
     } catch (error: any) {
       console.error('グループ参加エラー:', error);
       let msg = 'グループへの参加に失敗しました。';
@@ -472,498 +477,504 @@ export default function LoginPage() {
     setTimeout(() => setIsCopied(false), 2000);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-indigo-600"></div>
-      </div>
-    );
-  }
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+
+  const copyInviteCode = () => {
+    if (!group?.invite_code) return;
+    navigator.clipboard?.writeText(group.invite_code).catch(() => undefined);
+    setInviteCopied(true);
+    setTimeout(() => setInviteCopied(false), 2000);
+  };
+
+  const switchAuthMode = (mode: 'login' | 'signup' | 'reset') => {
+    setIsSignUp(mode === 'signup');
+    setIsResetMode(mode === 'reset');
+    setErrorMessage('');
+    setInfoMessage('');
+  };
+
+  const authMode = isResetMode ? 'reset' : isSignUp ? 'signup' : 'login';
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4 flex flex-col justify-between">
-      <main className="w-full max-w-md mx-auto bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden flex-grow flex flex-col">
-        {/* ヘッダー */}
-        <div className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 p-6 text-white text-center">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <Car className="h-8 w-8 animate-pulse" />
-            <h1 className="text-2xl font-bold tracking-tight">Family Car Share</h1>
+    <AnimatePresence mode="wait">
+      {loading ? (
+        <SettingsSkeleton key="skeleton" />
+      ) : !currentUser ? (
+        /* 認証前画面 */
+        <motion.main
+          key="auth"
+          data-testid="auth-screen"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="min-h-dvh w-full max-w-md mx-auto flex flex-col justify-center px-5 py-10"
+        >
+          <div className="mb-8 flex flex-col items-center gap-4">
+            <motion.div
+              initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
+              animate={{ scale: 1, opacity: 1, rotate: 0 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 14 }}
+              className="glass flex h-20 w-20 items-center justify-center rounded-[26px]"
+            >
+              <motion.div animate={{ y: [0, -3, 0] }} transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}>
+                <Car className="h-10 w-10 text-accent" strokeWidth={2.2} />
+              </motion.div>
+            </motion.div>
+            <motion.h1
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="text-[26px] font-extrabold tracking-tight text-ink"
+            >
+              Family Car Share
+            </motion.h1>
           </div>
-          <p className="text-indigo-100 text-xs">家族間の車両共有と予約の競合をなくすアプリ</p>
-        </div>
 
-        {/* 認証前画面 */}
-        {!currentUser ? (
-          <div className="p-6 flex-grow flex flex-col justify-center">
-            <h2 className="text-xl font-bold text-slate-800 text-center mb-6">
-              {isResetMode ? 'パスワードの再設定' : isSignUp ? 'アカウントを作成' : 'ログイン'}
-            </h2>
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 220, damping: 24, delay: 0.15 }}
+            className="glass rounded-[32px] p-5"
+          >
+            {authMode !== 'reset' && (
+              <div className="mb-5 flex rounded-full bg-slate-900/5 p-1">
+                {(['login', 'signup'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    data-testid={`auth-tab-${m}`}
+                    onClick={() => switchAuthMode(m)}
+                    className="relative flex-1 rounded-full py-2.5 text-[14px] font-bold"
+                  >
+                    {authMode === m && (
+                      <motion.span layoutId="auth-tab" className="absolute inset-0 rounded-full bg-white shadow-[0_4px_14px_-6px_rgba(15,23,42,0.3)]" />
+                    )}
+                    <span className={`relative ${authMode === m ? 'text-ink' : 'text-slate-500'}`}>{m === 'login' ? 'ログイン' : '新規登録'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
-            {isResetMode ? (
-              <form onSubmit={handlePasswordReset} className="space-y-4">
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  登録したメールアドレスを入力してください。パスワード再設定用のリンクをお送りします。
-                </p>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">メールアドレス</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
-                    <input
-                      type="email"
-                      required
-                      placeholder="example@family.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all"
-                    />
-                  </div>
-                </div>
-
-                {errorMessage && (
-                  <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-medium">
-                    {errorMessage}
-                  </div>
-                )}
-                {infoMessage && (
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-medium leading-relaxed">
-                    {infoMessage}
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={authLoading}
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-sm shadow-lg shadow-indigo-600/10 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+            <AnimatePresence mode="wait" initial={false}>
+              {authMode === 'reset' ? (
+                <motion.form
+                  key="reset"
+                  onSubmit={handlePasswordReset}
+                  initial={{ opacity: 0, x: 30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -30 }}
+                  className="space-y-4"
                 >
-                  <KeyRound className="h-4 w-4" />
-                  {authLoading ? '送信中...' : '再設定メールを送信する'}
-                </button>
-              </form>
-            ) : (
-            <form onSubmit={handleAuth} className="space-y-4">
-              {isSignUp && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">お名前</label>
-                  <div className="relative">
-                    <UserIcon className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
+                  <h2 className="text-[18px] font-extrabold text-ink">パスワードの再設定</h2>
+                  <div>
+                    <FieldLabel htmlFor="reset-email">メールアドレス</FieldLabel>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        id="reset-email"
+                        type="email"
+                        required
+                        autoComplete="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="glass-input h-13 pl-11 pr-4"
+                      />
+                    </div>
+                  </div>
+                  <Notice kind="error">{errorMessage}</Notice>
+                  <Notice kind="success">{infoMessage}</Notice>
+                  <Button type="submit" className="w-full" loading={authLoading} icon={<KeyRound className="h-4.5 w-4.5" />}>
+                    再設定メールを送信
+                  </Button>
+                  <button type="button" onClick={() => switchAuthMode('login')} className="block w-full py-2 text-[14px] font-bold text-accent">
+                    ログインに戻る
+                  </button>
+                </motion.form>
+              ) : (
+                <motion.form
+                  key="auth"
+                  onSubmit={handleAuth}
+                  initial={{ opacity: 0, x: -30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 30 }}
+                  className="space-y-4"
+                >
+                  <AnimatePresence initial={false}>
+                    {isSignUp && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                        <FieldLabel htmlFor="auth-name">お名前</FieldLabel>
+                        <div className="relative">
+                          <UserIcon className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                          <input
+                            id="auth-name"
+                            data-testid="auth-name"
+                            type="text"
+                            required
+                            autoComplete="name"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            className="glass-input h-13 pl-11 pr-4"
+                          />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div>
+                    <FieldLabel htmlFor="auth-email">メールアドレス</FieldLabel>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        id="auth-email"
+                        data-testid="auth-email"
+                        type="email"
+                        required
+                        autoComplete="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="glass-input h-13 pl-11 pr-4"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <FieldLabel htmlFor="auth-password">パスワード</FieldLabel>
+                    <div className="relative">
+                      <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        id="auth-password"
+                        data-testid="auth-password"
+                        type="password"
+                        required
+                        autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="glass-input h-13 pl-11 pr-4"
+                      />
+                    </div>
+                  </div>
+
+                  <Notice kind="error" testId="auth-error">{errorMessage}</Notice>
+
+                  <Button type="submit" className="w-full" loading={authLoading} data-testid="auth-submit">
+                    {isSignUp ? '登録する' : 'ログイン'}
+                  </Button>
+
+                  {!isSignUp && (
+                    <button type="button" onClick={() => switchAuthMode('reset')} className="block w-full py-1 text-[13px] font-bold text-slate-500">
+                      パスワードをお忘れの方
+                    </button>
+                  )}
+                </motion.form>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        </motion.main>
+      ) : (
+        /* 認証後: 設定画面 */
+        <motion.main
+          key="settings"
+          data-testid="settings-screen"
+          initial={{ opacity: 0, x: 40 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 40 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 32 }}
+          className="min-h-dvh w-full max-w-md mx-auto px-4 pt-[max(12px,env(safe-area-inset-top))] pb-16"
+        >
+          <header className="mb-4 flex items-center gap-3 py-2">
+            {group && (
+              <motion.button
+                whileTap={{ scale: 0.88 }}
+                onClick={() => router.push('/')}
+                className="glass flex h-11 w-11 items-center justify-center rounded-full text-ink"
+                aria-label="予約画面へ戻る"
+                data-testid="back-home"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </motion.button>
+            )}
+            <h1 className="text-[24px] font-extrabold tracking-tight text-ink">設定</h1>
+          </header>
+
+          <motion.div
+            className="space-y-4"
+            initial="hidden"
+            animate="show"
+            variants={{ hidden: {}, show: { transition: { staggerChildren: 0.06 } } }}
+          >
+            {/* ログインユーザー情報 */}
+            <Section>
+              <div className="flex items-center gap-3">
+                <Avatar name={profile?.name || 'U'} seed={currentUser.uid} size={52} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[17px] font-extrabold text-ink">{profile?.name || 'ユーザー'}</div>
+                  <div className="truncate text-[13px] font-semibold text-slate-500">{profile?.email}</div>
+                </div>
+                <motion.button
+                  whileTap={{ scale: 0.88 }}
+                  onClick={handleLogout}
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/5 text-slate-500 hover:text-rose-500"
+                  aria-label="ログアウト"
+                  data-testid="logout"
+                >
+                  <LogOut className="h-5 w-5" />
+                </motion.button>
+              </div>
+            </Section>
+
+            {!group ? (
+              <>
+                <Notice kind="error">{groupError}</Notice>
+
+                <Section title="グループを作成" icon={<Plus className="h-4.5 w-4.5" />}>
+                  <form onSubmit={handleCreateGroup} className="flex gap-2">
                     <input
                       type="text"
                       required
-                      placeholder="例：山田 太郎"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all"
+                      data-testid="group-name-input"
+                      placeholder="例：田中家"
+                      value={groupName}
+                      onChange={(e) => setGroupName(e.target.value)}
+                      className="glass-input h-12 px-4"
                     />
-                  </div>
-                </div>
-              )}
+                    <Button type="submit" className="h-12 flex-shrink-0" loading={groupLoading} data-testid="create-group">
+                      作成
+                    </Button>
+                  </form>
+                </Section>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">メールアドレス</label>
-                <div className="relative">
-                  <UserIcon className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
-                  <input
-                    type="email"
-                    required
-                    placeholder="example@family.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">パスワード</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
-                  <input
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all"
-                  />
-                </div>
-              </div>
-
-              {errorMessage && (
-                <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-medium">
-                  {errorMessage}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={authLoading}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-sm shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/20 transition-all flex items-center justify-center disabled:opacity-50"
-              >
-                {authLoading ? '処理中...' : isSignUp ? '会員登録する' : 'ログインする'}
-              </button>
-            </form>
-            )}
-
-            <div className="mt-6 text-center space-y-3">
-              {!isSignUp && !isResetMode && (
-                <button
-                  onClick={() => {
-                    setIsResetMode(true);
-                    setErrorMessage('');
-                    setInfoMessage('');
-                  }}
-                  className="block w-full text-xs text-slate-500 hover:text-indigo-600 font-semibold"
-                >
-                  パスワードをお忘れの方はこちら
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  if (isResetMode) {
-                    setIsResetMode(false);
-                  } else {
-                    setIsSignUp(!isSignUp);
-                  }
-                  setErrorMessage('');
-                  setInfoMessage('');
-                }}
-                className="block w-full text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
-              >
-                {isResetMode
-                  ? 'ログイン画面に戻る'
-                  : isSignUp
-                    ? '既にアカウントをお持ちの方はこちら (ログイン)'
-                    : '新しいアカウントを作成する (新規登録)'}
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* 認証後画面 */
-          <div className="p-6 space-y-6 flex-grow overflow-y-auto max-h-[80vh]">
-            {/* ログインユーザー情報 */}
-            <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold">
-                  {profile?.name?.charAt(0) || 'U'}
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-800">{profile?.name || 'ユーザー'}</h3>
-                  <p className="text-xs text-slate-400">{profile?.email}</p>
-                </div>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                title="ログアウト"
-              >
-                <LogOut className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* アカウント設定: パスワード変更 */}
-            <div className="flex items-center justify-between gap-2 px-1">
-              <span className="text-[10px] text-slate-400">パスワードを変更したい場合はメールで再設定できます。</span>
-              <button
-                onClick={handleSendResetForCurrentUser}
-                className="px-2.5 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-[10px] font-bold flex items-center gap-1 flex-shrink-0"
-              >
-                <KeyRound className="h-3 w-3" />
-                パスワード再設定
-              </button>
-            </div>
-            {accountMessage && (
-              <div className="p-2.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl text-[11px]">
-                {accountMessage}
-              </div>
-            )}
-
-            {/* グループ未所属時 */}
-            {!group ? (
-              <div className="space-y-6">
-                <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl text-xs flex gap-2">
-                  <Info className="h-5 w-5 flex-shrink-0" />
-                  <div>
-                    まだ車共有グループに所属していません。
-                    新規に家族のグループを作成するか、招待コードを入力して参加してください。
-                  </div>
-                </div>
-
-                {groupError && (
-                  <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-medium">
-                    {groupError}
-                  </div>
-                )}
-
-                {/* 新規グループ作成 */}
-                <form onSubmit={handleCreateGroup} className="space-y-3 bg-white p-4 border border-slate-100 rounded-2xl">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Plus className="h-4 w-4 text-indigo-600" />
-                    <h4 className="text-xs font-bold text-slate-700">新しくグループを作成する</h4>
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    placeholder="例：田中家"
-                    value={groupName}
-                    onChange={(e) => setGroupName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  />
-                  <button
-                    type="submit"
-                    disabled={groupLoading}
-                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs transition-all disabled:opacity-50"
-                  >
-                    {groupLoading ? '作成中...' : 'グループを作成する'}
-                  </button>
-                </form>
-
-                <div className="relative flex py-2 items-center">
-                  <div className="flex-grow border-t border-slate-200"></div>
-                  <span className="flex-shrink mx-4 text-slate-400 text-xs font-medium">または</span>
-                  <div className="flex-grow border-t border-slate-200"></div>
-                </div>
-
-                {/* 既存グループに参加 */}
-                <form onSubmit={handleJoinGroup} className="space-y-3 bg-white p-4 border border-slate-100 rounded-2xl">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Users className="h-4 w-4 text-indigo-600" />
-                    <h4 className="text-xs font-bold text-slate-700">招待コードでグループに参加する</h4>
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    placeholder="例：ABCD12"
-                    value={inviteCodeInput}
-                    onChange={(e) => setInviteCodeInput(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 uppercase tracking-widest text-center font-semibold"
-                  />
-                  <button
-                    type="submit"
-                    disabled={groupLoading}
-                    className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-semibold text-xs transition-all disabled:opacity-50"
-                  >
-                    {groupLoading ? '参加中...' : 'グループに参加する'}
-                  </button>
-                </form>
-              </div>
+                <Section title="招待コードで参加" icon={<Users className="h-4.5 w-4.5" />}>
+                  <form onSubmit={handleJoinGroup} className="flex gap-2">
+                    <input
+                      type="text"
+                      required
+                      data-testid="invite-code-input"
+                      placeholder="ABCD12"
+                      value={inviteCodeInput}
+                      onChange={(e) => setInviteCodeInput(e.target.value)}
+                      className="glass-input h-12 px-4 text-center font-extrabold uppercase tracking-[0.3em]"
+                    />
+                    <Button type="submit" variant="dark" className="h-12 flex-shrink-0" loading={groupLoading} data-testid="join-group">
+                      参加
+                    </Button>
+                  </form>
+                </Section>
+              </>
             ) : (
-              /* グループ所属時 */
-              <div className="space-y-6">
-                {/* 所属グループ情報 */}
-                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100/50 p-5 rounded-2xl">
-                  <span className="text-[10px] uppercase font-bold text-indigo-600 tracking-wider">所属グループ</span>
-                  <h3 className="text-lg font-bold text-slate-800 mb-2">{group.name}</h3>
-                  <div className="flex items-center justify-between bg-white p-3 border border-indigo-100 rounded-xl">
+              <>
+                {/* 所属グループ */}
+                <Section title={group.name} icon={<Users className="h-4.5 w-4.5" />}>
+                  <div className="flex items-center justify-between rounded-2xl bg-white/60 px-4 py-3">
                     <div>
-                      <span className="text-[9px] text-slate-400 block">招待コード（共有用）</span>
-                      <span className="text-base font-bold text-slate-800 tracking-widest">{group.invite_code}</span>
+                      <div className="text-[11px] font-bold text-slate-400">招待コード</div>
+                      <div className="text-[22px] font-extrabold tracking-[0.25em] text-ink" data-testid="invite-code">
+                        {group.invite_code}
+                      </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(group.invite_code);
-                        alert('招待コードをコピーしました。他の家族に教えて共有しましょう。');
-                      }}
-                      className="px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-xs font-semibold transition-all flex items-center gap-1"
+                    <Button
+                      size="sm"
+                      variant={inviteCopied ? 'dark' : 'secondary'}
+                      onClick={copyInviteCode}
+                      icon={inviteCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                     >
-                      <Copy className="h-3 w-3" />
-                      コピー
-                    </button>
+                      {inviteCopied ? 'コピー済み' : 'コピー'}
+                    </Button>
                   </div>
-                </div>
+                </Section>
 
-                {/* 共有車両の管理 */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                      <Car className="h-4 w-4 text-indigo-600" />
-                      車両管理
-                    </h4>
-                    <span className="text-[10px] text-slate-400 font-medium">登録台数: {vehicles.length}台</span>
-                  </div>
-
-                  {/* 車両一覧 */}
-                  {vehicles.length === 0 ? (
-                    <p className="text-xs text-slate-400 bg-slate-50 p-4 rounded-2xl text-center">
-                      まだ登録されている車両がありません。以下から追加してください。
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
+                {/* 車両 */}
+                <Section title="車両" icon={<Car className="h-4.5 w-4.5" />}>
+                  <motion.div layout className="space-y-2">
+                    <AnimatePresence initial={false}>
                       {vehicles.map((v) => {
-                        const matchedColor = colors.find(c => c.value === v.color) || colors[0];
+                        const c = vehicleColor(v.color);
                         return (
-                          <div
+                          <motion.div
                             key={v.id}
-                            className="flex items-center justify-between p-3 border border-slate-100 rounded-xl shadow-sm bg-white"
+                            layout
+                            data-testid="vehicle-row"
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0, x: -40 }}
+                            className="overflow-hidden"
                           >
-                            <div className="flex items-center gap-2.5">
-                              <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${matchedColor.bg}`}>
+                            <div className="flex items-center justify-between rounded-2xl bg-white/60 px-4 py-3">
+                              <span className="flex items-center gap-2.5 text-[15px] font-bold text-ink">
+                                <span className={`h-3 w-3 rounded-full ${c.dot}`} />
                                 {v.name}
                               </span>
+                              <motion.button
+                                whileTap={{ scale: 0.85 }}
+                                onClick={() => handleDeleteVehicle(v.id)}
+                                aria-label={`${v.name} を削除`}
+                                className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-500"
+                              >
+                                <Trash2 className="h-4.5 w-4.5" />
+                              </motion.button>
                             </div>
-                            <button
-                              onClick={() => handleDeleteVehicle(v.id)}
-                              className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-50 transition-all"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
+                          </motion.div>
                         );
                       })}
-                    </div>
-                  )}
+                    </AnimatePresence>
+                  </motion.div>
 
-                  {vehicleError && (
-                    <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-medium">
-                      {vehicleError}
-                    </div>
-                  )}
+                  <Notice kind="error">{vehicleError}</Notice>
 
-                  {/* 車両追加フォーム */}
-                  <form onSubmit={handleAddVehicle} className="p-4 border border-slate-100 rounded-2xl bg-slate-50/50 space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 mb-1">車両名</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="プリウス, シエンタ 等"
-                          value={newVehicleName}
-                          onChange={(e) => setNewVehicleName(e.target.value)}
-                          className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                        />
+                  <form onSubmit={handleAddVehicle} className="space-y-3 pt-1">
+                    <input
+                      type="text"
+                      required
+                      data-testid="vehicle-name-input"
+                      placeholder="車両名（例：プリウス）"
+                      value={newVehicleName}
+                      onChange={(e) => setNewVehicleName(e.target.value)}
+                      className="glass-input h-12 px-4"
+                    />
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex gap-2" role="radiogroup" aria-label="カラー">
+                        {colors.map((c) => (
+                          <motion.button
+                            key={c.value}
+                            type="button"
+                            role="radio"
+                            aria-checked={newVehicleColor === c.value}
+                            aria-label={c.label}
+                            whileTap={{ scale: 0.85 }}
+                            animate={{ scale: newVehicleColor === c.value ? 1.15 : 1 }}
+                            onClick={() => setNewVehicleColor(c.value)}
+                            className={`h-8 w-8 rounded-full ${vehicleColor(c.value).dot} ${
+                              newVehicleColor === c.value ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-300' : ''
+                            }`}
+                          />
+                        ))}
                       </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 mb-1">テーマカラー</label>
-                        <select
-                          value={newVehicleColor}
-                          onChange={(e) => setNewVehicleColor(e.target.value)}
-                          className="w-full px-2 py-1.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
-                        >
-                          {colors.map((c) => (
-                            <option key={c.value} value={c.value}>
-                              {c.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      <Button type="submit" size="sm" loading={vehicleLoading} icon={<Plus className="h-4 w-4" />} data-testid="add-vehicle">
+                        追加
+                      </Button>
                     </div>
-                    <button
-                      type="submit"
-                      disabled={vehicleLoading}
-                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs transition-all flex items-center justify-center gap-1 shadow-sm disabled:opacity-50"
-                    >
-                      <Plus className="h-4 w-4" />
-                      {vehicleLoading ? '追加中...' : '車両を追加する'}
-                    </button>
                   </form>
-                </div>
-
-                {/* 管理画面：カレンダーテンプレート設定 */}
-                <div className="space-y-3">
-                  <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <Settings className="h-4 w-4 text-indigo-600" />
-                    カレンダー連携テンプレート設定
-                  </h4>
-
-                  <form onSubmit={handleSaveCalendarSettings} className="p-4 border border-slate-100 rounded-2xl bg-white space-y-4 shadow-sm">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1 flex items-center justify-between">
-                        <span>イベントタイトル テンプレート</span>
-                        <span className="text-slate-400 font-normal">使用可能: {"{vehicle_name}"}, {"{user_name}"}</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={titleTemplate}
-                        onChange={(e) => setTitleTemplate(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                        placeholder="例: [車共有] {vehicle_name}の予約 - {user_name}"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1 flex items-center justify-between">
-                        <span>イベント詳細 テンプレート</span>
-                        <span className="text-slate-400 font-normal">使用可能: {"{vehicle_name}"}, {"{user_name}"}, {"{invited_emails}"}</span>
-                      </label>
-                      <textarea
-                        required
-                        rows={3}
-                        value={descTemplate}
-                        onChange={(e) => setDescTemplate(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                        placeholder="例: 予約者: {user_name}&#10;同乗者: {invited_emails}"
-                      />
-                    </div>
-
-                    {saveSuccess && (
-                      <div className="p-2 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-lg text-[10px] text-center font-semibold">
-                        テンプレート設定を保存しました。
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-semibold text-xs transition-all"
-                    >
-                      テンプレートを保存する
-                    </button>
-                  </form>
-                </div>
+                </Section>
 
                 {/* LINE 公式アカウント連携 */}
                 <LineSettings />
 
-                {/* iCal購読用連携 */}
-                <div className="space-y-3 bg-indigo-50/30 p-4 border border-indigo-100/30 rounded-2xl">
-                  <h4 className="text-xs font-bold text-indigo-950 flex items-center gap-1">
-                    <Calendar className="h-4 w-4 text-indigo-600" />
-                    カレンダー同期 (Apple / Google)
-                  </h4>
-                  <p className="text-[10px] text-slate-500 leading-relaxed">
-                    以下の URL を Google カレンダーや Apple カレンダーの「URLで購読」に設定することで、予約スケジュールがカレンダーアプリに自動同期されます。
-                  </p>
+                {/* iCal 購読用連携 */}
+                <Section title="カレンダー同期" icon={<Calendar className="h-4.5 w-4.5" />}>
                   {profile?.calendar_token ? (
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
                         readOnly
+                        aria-label="カレンダー購読 URL"
                         value={origin ? `${origin}/api/calendar/ics?token=${profile.calendar_token}` : `.../api/calendar/ics?token=${profile.calendar_token}`}
-                        className="flex-grow bg-white border border-slate-200 text-[10px] px-2.5 py-1.5 rounded-lg text-slate-600 font-mono focus:outline-none truncate"
+                        className="glass-input h-11 truncate px-3 font-mono text-[12px]! text-slate-500"
                       />
-                      <button
+                      <Button
+                        size="sm"
+                        variant={isCopied ? 'dark' : 'secondary'}
+                        className="h-11 flex-shrink-0"
                         onClick={copyCalendarUrl}
-                        className="p-2 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-slate-600 hover:text-indigo-600 transition-all flex-shrink-0 shadow-sm"
-                        title="URLをコピー"
-                      >
-                        {isCopied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                      </button>
+                        aria-label="URLをコピー"
+                        icon={isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      />
                     </div>
                   ) : (
-                    <button
-                      onClick={handleRegenerateToken}
-                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs transition-all shadow-sm"
-                    >
-                      同期トークンを発行する
-                    </button>
+                    <Button className="w-full" onClick={handleRegenerateToken}>
+                      同期 URL を発行
+                    </Button>
                   )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </main>
+                  <p className="text-[12px] font-semibold text-slate-400">Google / Apple カレンダーの「URL で購読」に貼り付け</p>
+                </Section>
 
-      {/* フッター */}
-      <footer className="w-full max-w-md mx-auto mt-4 text-center">
-        <button
-          onClick={() => router.push('/')}
-          className="inline-flex items-center gap-1.5 px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-full shadow-lg transition-all"
-        >
-          予約カレンダーへ戻る
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </footer>
-    </div>
+                {/* カレンダーテンプレート設定 */}
+                <Section>
+                  <button
+                    type="button"
+                    onClick={() => setShowTemplates((v) => !v)}
+                    className="flex w-full items-center justify-between text-[15px] font-extrabold text-ink"
+                  >
+                    <span className="flex items-center gap-2">
+                      <FileText className="h-4.5 w-4.5 text-accent" />
+                      カレンダーの表示形式
+                    </span>
+                    <motion.span animate={{ rotate: showTemplates ? 180 : 0 }}>
+                      <ChevronDown className="h-5 w-5 text-slate-400" />
+                    </motion.span>
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {showTemplates && (
+                      <motion.form
+                        onSubmit={handleSaveCalendarSettings}
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="space-y-3 overflow-hidden pt-3"
+                      >
+                        <div>
+                          <FieldLabel htmlFor="tpl-title">タイトル</FieldLabel>
+                          <input
+                            id="tpl-title"
+                            type="text"
+                            required
+                            value={titleTemplate}
+                            onChange={(e) => setTitleTemplate(e.target.value)}
+                            className="glass-input h-12 px-4"
+                          />
+                        </div>
+                        <div>
+                          <FieldLabel htmlFor="tpl-desc">詳細</FieldLabel>
+                          <textarea
+                            id="tpl-desc"
+                            required
+                            rows={3}
+                            value={descTemplate}
+                            onChange={(e) => setDescTemplate(e.target.value)}
+                            className="glass-input px-4 py-3"
+                          />
+                        </div>
+                        <p className="text-[12px] font-semibold text-slate-400">
+                          {'{vehicle_name} {user_name} {invited_emails} {destination} {purpose}'}
+                        </p>
+                        <Notice kind="success">{saveSuccess ? '保存しました' : null}</Notice>
+                        <Button type="submit" variant="dark" className="w-full">
+                          保存
+                        </Button>
+                      </motion.form>
+                    )}
+                  </AnimatePresence>
+                </Section>
+              </>
+            )}
+
+            {/* アカウント: パスワード変更 */}
+            <Section>
+              <Button variant="secondary" className="w-full" onClick={handleSendResetForCurrentUser} icon={<KeyRound className="h-4.5 w-4.5" />}>
+                パスワードを再設定
+              </Button>
+              <Notice kind="success">{accountMessage}</Notice>
+            </Section>
+          </motion.div>
+        </motion.main>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function Section({ title, icon, children }: { title?: string; icon?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <motion.section
+      variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}
+      transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+      className="glass space-y-3 rounded-[26px] p-5"
+    >
+      {title && (
+        <h2 className="flex items-center gap-2 text-[15px] font-extrabold text-ink">
+          <span className="text-accent">{icon}</span>
+          {title}
+        </h2>
+      )}
+      {children}
+    </motion.section>
   );
 }
