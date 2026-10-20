@@ -144,9 +144,14 @@ export default function NextUp({ reservations, vehicles, currentUserId, now, onJ
                   )}
                 </div>
               </div>
-              <div className="mt-4 flex items-baseline gap-2.5">
+              <div className="mt-4 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
                 <span className="text-[17px] font-bold text-slate-500">{relativeDayLabel(next.start_time, now)}</span>
-                <span data-testid="next-up-time" className="text-[34px] font-extrabold leading-none tracking-tight text-ink tabular-nums">
+                <span
+                  data-testid="next-up-time"
+                  className={`${
+                    toJstYmd(next.start_time) === toJstYmd(next.end_time) ? 'text-[34px]' : 'text-[26px]'
+                  } font-extrabold leading-none tracking-tight text-ink tabular-nums`}
+                >
                   {timeRange(next)}
                 </span>
               </div>

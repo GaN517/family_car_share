@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiFetch } from '@/lib/api-client';
-import { addDaysYmd, jstToDate, toJstHm, toJstYmd, weekdayLabel, weekdayOfYmd } from '@/lib/datetime';
+import { addDaysYmd, formatSpan, jstToDate, nextHourSlot, todayJst, toJstHm, toJstYmd, weekdayLabel, weekdayOfYmd } from '@/lib/datetime';
 import {
   describeRecurrence,
   generateOccurrences,
@@ -54,6 +54,8 @@ interface ReservationModalProps {
 
 type RepeatOption = 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly';
 
+const DEFAULT_DURATION_MS = 60 * 60 * 1000;
+
 const REPEAT_OPTIONS: { value: RepeatOption; label: string }[] = [
   { value: 'none', label: 'なし' },
   { value: 'daily', label: '毎日' },
@@ -78,7 +80,8 @@ export default function ReservationModal({
   const [vehicleId, setVehicleId] = useState('');
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('18:00');
+  const [endDate, setEndDate] = useState('');
+  const [endTime, setEndTime] = useState('10:00');
   const [destination, setDestination] = useState('');
   const [purpose, setPurpose] = useState('');
 
@@ -116,16 +119,22 @@ export default function ReservationModal({
       // 日本標準時で日付・時刻を表示
       setDate(toJstYmd(editReservation.start_time));
       setStartTime(toJstHm(editReservation.start_time));
+      setEndDate(toJstYmd(editReservation.end_time));
       setEndTime(toJstHm(editReservation.end_time));
       setInvitedEmails(editReservation.invited_emails || []);
       setDestination(editReservation.destination || '');
       setPurpose(editReservation.purpose || '');
     } else {
       setVehicleId(currentVehicleId || vehicles[0]?.id || '');
-      // ホーム画面で選択している日付を初期値にする
-      setDate(initialDate || toJstYmd(new Date()));
-      setStartTime('09:00');
-      setEndTime('18:00');
+      // 開始は現在時刻の次の 00 分。日付はホーム画面で選択している日付（今日で深夜を越える場合は翌日）
+      const slot = nextHourSlot();
+      const today = todayJst();
+      const startYmd = !initialDate || initialDate === today ? slot.ymd : initialDate;
+      const end = new Date(jstToDate(startYmd, slot.hm).getTime() + DEFAULT_DURATION_MS);
+      setDate(startYmd);
+      setStartTime(slot.hm);
+      setEndDate(toJstYmd(end));
+      setEndTime(toJstHm(end));
       setInvitedEmails([]);
       setDestination('');
       setPurpose('');
@@ -151,12 +160,12 @@ export default function ReservationModal({
   }, [isEditMode, repeat, repeatUntil, repeatWeekdays]);
 
   const timeRange = useMemo(() => {
-    if (!date || !startTime || !endTime) return null;
+    if (!date || !startTime || !endDate || !endTime) return null;
     const start = jstToDate(date, startTime);
-    const end = jstToDate(date, endTime);
+    const end = jstToDate(endDate, endTime);
     if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
     return { start, end };
-  }, [date, startTime, endTime]);
+  }, [date, startTime, endDate, endTime]);
 
   const occurrenceCount = useMemo(() => {
     if (!recurrence || !timeRange || timeRange.start >= timeRange.end) return 1;
@@ -323,13 +332,38 @@ export default function ReservationModal({
     onClose();
   };
 
-  const setDuration = (hours: number) => {
-    const [h, m] = startTime.split(':').map(Number);
-    const total = Math.min(h * 60 + m + hours * 60, 23 * 60 + 45);
-    setEndTime(`${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`);
+  /** 開始から指定した長さで終了日時を設定（日をまたいでもよい） */
+  const setEndFromStart = (startYmd: string, startHm: string, durationMs: number) => {
+    const start = jstToDate(startYmd, startHm);
+    if (isNaN(start.getTime())) return;
+    const end = new Date(start.getTime() + Math.max(durationMs, 15 * 60 * 1000));
+    setEndDate(toJstYmd(end));
+    setEndTime(toJstHm(end));
   };
 
-  const durationMinutes = timeRange ? Math.round((timeRange.end.getTime() - timeRange.start.getTime()) / 60000) : 0;
+  const setDuration = (hours: number) => setEndFromStart(date, startTime, hours * 60 * 60 * 1000);
+
+  const currentDurationMs = timeRange ? timeRange.end.getTime() - timeRange.start.getTime() : DEFAULT_DURATION_MS;
+
+  // 開始日時を変えたら、予約の長さを保ったまま終了日時も移動する
+  const changeStartDate = (ymd: string) => {
+    if (!ymd) return;
+    setDate(ymd);
+    setEndFromStart(ymd, startTime, currentDurationMs);
+  };
+  const changeStartTime = (hm: string) => {
+    if (!hm) return;
+    setStartTime(hm);
+    setEndFromStart(date, hm, currentDurationMs);
+  };
+  // 同じ日のまま終了時刻を開始より前にしたら、翌日の終了とみなす（深夜をまたぐ予約）
+  const changeEndTime = (hm: string) => {
+    setEndTime(hm);
+    if (hm && endDate === date && hm <= startTime) setEndDate(addDaysYmd(date, 1));
+  };
+
+  const durationMinutes = Math.round(currentDurationMs / 60000);
+  const endDayOffset = date && endDate ? Math.round((jstToDate(endDate).getTime() - jstToDate(date).getTime()) / 86400000) : 0;
 
   const submitLabel = canSkipConflicts
     ? `重複を除いて${occurrenceCount - conflictList.length}件を予約`
@@ -457,49 +491,55 @@ export default function ReservationModal({
 
             {/* 日時 */}
             <div className="glass rounded-[22px] p-4 space-y-3">
-              <div>
-                <FieldLabel htmlFor="res-date">{recurrence ? '初回の日付' : '日付'}</FieldLabel>
-                <input
-                  id="res-date"
-                  data-testid="res-date"
-                  type="date"
-                  required
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="glass-input px-4 font-bold"
-                />
-              </div>
-              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2">
-                <div>
-                  <FieldLabel htmlFor="res-start">開始</FieldLabel>
-                  <input
-                    id="res-start"
-                    data-testid="res-start"
-                    type="time"
-                    required
-                    step="900"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="glass-input px-3 text-center text-[18px] font-extrabold tabular-nums"
-                  />
+              {(
+                [
+                  { key: 'start', label: recurrence ? '開始（初回）' : '開始', ymd: date, hm: startTime, onYmd: changeStartDate, onHm: changeStartTime },
+                  { key: 'end', label: '終了', ymd: endDate, hm: endTime, onYmd: setEndDate, onHm: changeEndTime },
+                ] as const
+              ).map((row) => (
+                <div key={row.key}>
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <span className="text-[12px] font-bold text-slate-500">{row.label}</span>
+                    <AnimatePresence>
+                      {row.key === 'end' && endDayOffset > 0 && (
+                        <motion.span
+                          data-testid="overnight-badge"
+                          initial={{ opacity: 0, scale: 0.6 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.6 }}
+                          className="rounded-full bg-violet-500/12 px-2 py-0.5 text-[11px] font-extrabold text-violet-700"
+                        >
+                          {endDayOffset === 1 ? '翌日' : `${endDayOffset}日後`}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-2">
+                    <input
+                      aria-label={`${row.label}日`}
+                      data-testid={row.key === 'start' ? 'res-date' : 'res-end-date'}
+                      type="date"
+                      required
+                      value={row.ymd}
+                      min={row.key === 'end' ? date : undefined}
+                      onChange={(e) => row.onYmd(e.target.value)}
+                      className="glass-input px-3 font-bold"
+                    />
+                    <input
+                      aria-label={`${row.label}時刻`}
+                      data-testid={row.key === 'start' ? 'res-start' : 'res-end'}
+                      type="time"
+                      required
+                      step="900"
+                      value={row.hm}
+                      onChange={(e) => row.onHm(e.target.value)}
+                      className="glass-input px-2.5 text-[16px] font-extrabold tabular-nums tracking-tight"
+                    />
+                  </div>
                 </div>
-                <span className="pb-3 text-slate-300 font-bold">–</span>
-                <div>
-                  <FieldLabel htmlFor="res-end">終了</FieldLabel>
-                  <input
-                    id="res-end"
-                    data-testid="res-end"
-                    type="time"
-                    required
-                    step="900"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className="glass-input px-3 text-center text-[18px] font-extrabold tabular-nums"
-                  />
-                </div>
-              </div>
+              ))}
               <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
-                {[1, 2, 3, 5, 8].map((h) => (
+                {[1, 2, 3, 5, 8, 12, 24].map((h) => (
                   <motion.button
                     key={h}
                     type="button"
@@ -556,6 +596,7 @@ export default function ReservationModal({
                     >
                       <CheckCircle2 className="h-4 w-4" />
                       {isRecurring ? `全${occurrenceCount}回 空いています` : '空いています'}
+                      <span className="font-semibold text-emerald-600/70" data-testid="duration-label">・{formatSpan(currentDurationMs)}</span>
                     </motion.div>
                   ) : null}
                 </AnimatePresence>

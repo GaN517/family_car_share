@@ -24,12 +24,22 @@ interface TimelineProps {
   highlightId?: string | null;
 }
 
-/** 日をまたぐ予約は、表示中の日付側の時刻だけを見せる */
-const clipLabel = (res: ReservationView, date: string) => {
-  const startLabel = toJstYmd(res.start_time) === date ? toJstHm(res.start_time) : '前日〜';
-  const endLabel = toJstYmd(res.end_time) === date ? toJstHm(res.end_time) : '翌日';
-  return { startLabel, endLabel };
+/** 日をまたぐ予約は、表示中の日付以外の側に「前日」「翌日」などを添える */
+const dayPrefix = (ymd: string, date: string) => {
+  if (ymd === date) return '';
+  const diff = Math.round((new Date(`${ymd}T00:00:00Z`).getTime() - new Date(`${date}T00:00:00Z`).getTime()) / 86400000);
+  if (diff === 1) return '翌日';
+  if (diff === -1) return '前日';
+  const [, m, d] = ymd.split('-').map(Number);
+  return `${m}/${d}`;
 };
+
+const clipLabel = (res: ReservationView, date: string) => ({
+  startPrefix: dayPrefix(toJstYmd(res.start_time), date),
+  startHm: toJstHm(res.start_time),
+  endPrefix: dayPrefix(toJstYmd(res.end_time), date),
+  endHm: toJstHm(res.end_time),
+});
 
 function NowLine({ now }: { now: number }) {
   return (
@@ -84,7 +94,7 @@ export default function Timeline({
           const isFinished = end <= now;
           const isOngoing = start <= now && now < end;
           const hasPendingTransfer = pendingTransferIds?.has(res.id);
-          const { startLabel, endLabel } = clipLabel(res, date);
+          const { startPrefix, startHm, endPrefix, endHm } = clipLabel(res, date);
           const highlighted = highlightId === res.id;
 
           return (
@@ -118,9 +128,11 @@ export default function Timeline({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-[22px] font-extrabold leading-none tracking-tight text-ink tabular-nums" data-testid="reservation-time">
-                      {startLabel}
+                      {startPrefix && <span className="mr-1 align-middle text-[13px] font-bold text-violet-600">{startPrefix}</span>}
+                      {startHm}
                       <span className="mx-1 text-slate-300">–</span>
-                      {endLabel}
+                      {endPrefix && <span className="mr-1 align-middle text-[13px] font-bold text-violet-600">{endPrefix}</span>}
+                      {endHm}
                     </div>
                     <div className="mt-2.5 flex items-center gap-2">
                       <Avatar name={userName} seed={res.user_id} size={28} />

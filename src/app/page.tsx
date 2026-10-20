@@ -233,7 +233,17 @@ export default function DashboardPage() {
   }, [allReservations, selectedVehicleId, selectedDate]);
 
   const busyDays = useMemo(
-    () => new Set(allReservations.filter((r) => r.vehicle_id === selectedVehicleId).map((r) => toJstYmd(r.start_time))),
+    () => {
+      // 日をまたぐ予約は、かかっているすべての日にドットを付ける
+      const days = new Set<string>();
+      allReservations
+        .filter((r) => r.vehicle_id === selectedVehicleId)
+        .forEach((r) => {
+          const last = toJstYmd(new Date(new Date(r.end_time).getTime() - 1));
+          for (let d = toJstYmd(r.start_time), i = 0; d <= last && i < 62; d = addDaysYmd(d, 1), i++) days.add(d);
+        });
+      return days;
+    },
     [allReservations, selectedVehicleId]
   );
 
