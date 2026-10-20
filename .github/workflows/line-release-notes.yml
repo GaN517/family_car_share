@@ -1,0 +1,30 @@
+# 本番デプロイ完了時に、リリースノート (src/lib/release-notes.ts) を LINE 連携済みユーザーへ配信します。
+# Vercel が GitHub に送る deployment_status (Production / success) をきっかけに実行されます。
+# 同じ version は API 側で二重配信されません。手動実行 (workflow_dispatch) も可能です。
+# 必要な Actions シークレット: APP_URL, CRON_SECRET（line-reminders.yml と共通）
+name: LINE release notes
+
+on:
+  deployment_status:
+  workflow_dispatch:
+
+jobs:
+  broadcast:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Broadcast release notes
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "APP_URL / CRON_SECRET が未設定のためスキップします。"
+            exit 0
+          fi
+          # デプロイ直後の反映待ち
+          sleep 20
+          curl -fsS -X POST -H "Authorization: Bearer ${CRON_SECRET}" "${APP_URL%/}/api/line/release-notes"

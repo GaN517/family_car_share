@@ -1,46 +1,170 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f4f6fb;
+  --foreground: #0b1220;
+  --accent: #0a84ff;
+  --accent-strong: #0060df;
+  --glass-fill: linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.5));
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --glass-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.35),
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 10px 30px -8px rgba(15, 23, 42, 0.12);
 }
 
 @theme {
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-geist-sans), "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
-  
-  --animate-slide-up: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  --animate-fade-in: fade-in 0.2s ease-out;
 
-  @keyframes slide-up {
+  --color-accent: #0a84ff;
+  --color-accent-strong: #0060df;
+  --color-ink: #0b1220;
+
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-drift: drift 22s ease-in-out infinite alternate;
+  --animate-pulse-ring: pulse-ring 2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+
+  @keyframes shimmer {
     from {
-      transform: translateY(100%);
+      transform: translateX(-100%);
     }
     to {
-      transform: translateY(0);
+      transform: translateX(100%);
     }
   }
-  @keyframes fade-in {
-    from {
-      opacity: 0;
+  @keyframes drift {
+    0% {
+      transform: translate3d(0, 0, 0) scale(1);
     }
-    to {
-      opacity: 1;
+    50% {
+      transform: translate3d(6%, -4%, 0) scale(1.08);
+    }
+    100% {
+      transform: translate3d(-5%, 5%, 0) scale(0.96);
+    }
+  }
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(0.9);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(2.2);
+      opacity: 0;
     }
   }
 }
 
 @utility scrollbar-none {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
   &::-webkit-scrollbar {
-    display: none; /* Chrome, Safari and Opera */
+    display: none;
   }
+}
+
+/*
+ * Liquid Glass
+ * 半透明の白 + 背景のぼかし・彩度強調 + 上辺のハイライトで「厚みのあるガラス」を表現します。
+ * ::before の縁取りグラデーションが光の反射（スペキュラ）を担当します。
+ */
+@utility glass {
+  position: relative;
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  isolation: isolate;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0) 38%, rgba(255, 255, 255, 0) 62%, rgba(255, 255, 255, 0.9));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: -1;
+  }
+}
+
+/* 濃いめのガラス（シート・ナビゲーションなど上に重なる面） */
+@utility glass-strong {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.72));
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 -2px 30px -6px rgba(15, 23, 42, 0.14);
+}
+
+/* ガラス上の入力欄 */
+@utility glass-input {
+  width: 100%;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+  font-size: 16px; /* iOS のズームを防ぐ */
+  color: var(--foreground);
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  &:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(10, 132, 255, 0.55);
+    box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.14);
+  }
+  &::placeholder {
+    color: rgba(15, 23, 42, 0.32);
+  }
+}
+
+/* スケルトンのシマー */
+@utility skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.06);
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+    animation: var(--animate-shimmer);
+  }
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), Arial, sans-serif;
+  font-family: var(--font-sans);
+  font-feature-settings: "palt";
+  overscroll-behavior-y: none;
 }
 
+input[type="date"],
+input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  min-height: 48px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

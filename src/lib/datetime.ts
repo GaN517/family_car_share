@@ -73,3 +73,26 @@ export const formatJstRange = (start: DateInput, end: DateInput): string => {
     ? `${formatJstDate(start)} ${toJstHm(start)}〜${toJstHm(end)}`
     : `${formatJstDate(start)} ${toJstHm(start)}〜${formatJstDate(end)} ${toJstHm(end)}`;
 };
+
+/** 「今日」「明日」「10月22日(木)」のような日付ラベル（JST） */
+export const relativeDayLabel = (date: DateInput, now: DateInput = new Date()): string => {
+  const ymd = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : toJstYmd(date);
+  const today = toJstYmd(now);
+  if (ymd === today) return '今日';
+  if (ymd === addDaysYmd(today, 1)) return '明日';
+  if (ymd === addDaysYmd(today, 2)) return 'あさって';
+  if (ymd === addDaysYmd(today, -1)) return '昨日';
+  return formatJstDate(ymd);
+};
+
+/** 残り時間を「45分」「3時間20分」「2日」の形式で表記します */
+export const formatDuration = (ms: number): string => {
+  const totalMin = Math.max(0, Math.ceil(ms / 60000));
+  if (totalMin < 60) return `${totalMin}分`;
+  const hours = Math.floor(totalMin / 60);
+  if (hours < 24) {
+    const min = totalMin % 60;
+    return min ? `${hours}時間${min}分` : `${hours}時間`;
+  }
+  return `${Math.floor(hours / 24)}日`;
+};

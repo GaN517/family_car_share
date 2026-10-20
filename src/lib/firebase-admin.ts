@@ -45,6 +45,29 @@ async function getGoogleCerts(): Promise<Record<string, string>> {
 
 const decodeSegment = (segment: string) => JSON.parse(Buffer.from(segment, 'base64url').toString('utf-8'));
 
+async function verifySignature(parts: string[], kid: string) {
+  const certs = await getGoogleCerts();
+  let pem = certs[kid];
+  if (!pem) {
+    // 鍵がローテーションされた直後の可能性があるため、キャッシュを破棄して再取得
+    certCache = null;
+    pem = (await getGoogleCerts())[kid];
+  }
+  if (!pem) {
+    throw new Error('トークンの署名鍵が見つかりません。ログインし直してください。');
+  }
+
+  const validSignature = crypto.verify(
+    'RSA-SHA256',
+    Buffer.from(`${parts[0]}.${parts[1]}`),
+    crypto.createPublicKey(pem),
+    Buffer.from(parts[2], 'base64url')
+  );
+  if (!validSignature) {
+    throw new Error('トークンの署名が無効です。');
+  }
+}
+
 /**
  * Firebase ID トークンを検証し、uid を返します。
  *
@@ -70,30 +93,14 @@ async function verifyIdToken(idToken: string): Promise<{ uid: string; email?: st
     throw new Error('トークンの解析に失敗しました。');
   }
 
-  if (header.alg !== 'RS256' || !header.kid) {
+  // Firebase Auth エミュレータ（E2E テスト専用）のトークンは署名なし。本番では FIREBASE_AUTH_EMULATOR_HOST を設定しないこと
+  const isEmulator = !!process.env.FIREBASE_AUTH_EMULATOR_HOST && header.alg === 'none';
+
+  if (!isEmulator && (header.alg !== 'RS256' || !header.kid)) {
     throw new Error('トークンの署名形式が不正です。');
   }
 
-  const certs = await getGoogleCerts();
-  let pem = certs[header.kid];
-  if (!pem) {
-    // 鍵がローテーションされた直後の可能性があるため、キャッシュを破棄して再取得
-    certCache = null;
-    pem = (await getGoogleCerts())[header.kid];
-  }
-  if (!pem) {
-    throw new Error('トークンの署名鍵が見つかりません。ログインし直してください。');
-  }
-
-  const validSignature = crypto.verify(
-    'RSA-SHA256',
-    Buffer.from(`${parts[0]}.${parts[1]}`),
-    crypto.createPublicKey(pem),
-    Buffer.from(parts[2], 'base64url')
-  );
-  if (!validSignature) {
-    throw new Error('トークンの署名が無効です。');
-  }
+  if (!isEmulator) await verifySignature(parts, header.kid!);
 
   const now = Math.floor(Date.now() / 1000);
   const skew = 300;

@@ -10,18 +10,10 @@ import {
   type RecurrenceFrequency,
   type RecurrenceRule,
 } from '@/lib/recurrence';
-import {
-  X,
-  Calendar as CalendarIcon,
-  Clock,
-  Mail,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-  Trash2,
-  CalendarPlus,
-  Repeat,
-} from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { X, Mail, Check, CheckCircle2, AlertCircle, Loader2, Trash2, CalendarPlus, Repeat } from 'lucide-react';
+import Sheet from '@/components/ui/sheet';
+import { Button, FieldLabel, Notice, vehicleColor } from '@/components/ui/primitives';
 
 interface Vehicle {
   id: string;
@@ -114,6 +106,7 @@ export default function ReservationModal({
     setErrorMessage('');
     setSuccess(null);
     setShowDeleteOptions(false);
+    setConflict(null);
     setConflictList([]);
     setRepeat('none');
     setEmailInput('');
@@ -223,7 +216,7 @@ export default function ReservationModal({
         setInvitedEmails([...invitedEmails, cleanEmail]);
         setEmailInput('');
       } else {
-        alert('正しいメールアドレスを入力してください。');
+        setErrorMessage('正しいメールアドレスを入力してください。');
       }
     }
   };
@@ -330,52 +323,88 @@ export default function ReservationModal({
     onClose();
   };
 
-  if (!isOpen) return null;
+  const setDuration = (hours: number) => {
+    const [h, m] = startTime.split(':').map(Number);
+    const total = Math.min(h * 60 + m + hours * 60, 23 * 60 + 45);
+    setEndTime(`${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`);
+  };
 
-  const inputClass =
-    'w-full rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium';
+  const durationMinutes = timeRange ? Math.round((timeRange.end.getTime() - timeRange.start.getTime()) / 60000) : 0;
+
+  const submitLabel = canSkipConflicts
+    ? `重複を除いて${occurrenceCount - conflictList.length}件を予約`
+    : isRecurring
+      ? `${occurrenceCount}件を予約`
+      : isEditMode
+        ? '変更を保存'
+        : '予約する';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm transition-all duration-300">
-      <div className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-100 flex flex-col max-h-[92vh] sm:max-h-[85vh] animate-slide-up sm:animate-fade-in">
-        {/* モーダルヘッダー */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/50 rounded-t-3xl">
-          <h3 className="text-base font-bold text-slate-800">
-            {success ? '予約が完了しました！' : isEditMode ? '予約を編集' : '新しい予約を作成'}
-          </h3>
-          <button
-            onClick={closeModal}
-            className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-all"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* 予約完了画面（Googleカレンダー連携の案内） */}
+    <Sheet
+      open={isOpen}
+      onClose={closeModal}
+      testId="reservation-sheet"
+      title={success ? '予約しました' : isEditMode ? '予約を編集' : '新しい予約'}
+      footer={
+        success ? (
+          <Button variant="secondary" className="w-full" onClick={closeModal}>
+            閉じる
+          </Button>
+        ) : (
+          <div className="flex gap-2">
+            {isEditMode && editReservation && editReservation.user_id === currentUserId && (
+              <Button
+                variant="danger"
+                onClick={() => (editReservation.series_id ? setShowDeleteOptions((v) => !v) : handleDelete('single'))}
+                disabled={submitting}
+                icon={<Trash2 className="h-4.5 w-4.5" />}
+                aria-label="予約を削除"
+                data-testid="delete-reservation"
+              />
+            )}
+            <Button
+              className="flex-1"
+              onClick={handleSubmit}
+              loading={submitting}
+              disabled={conflict === true && !canSkipConflicts}
+              data-testid="submit-reservation"
+            >
+              {submitLabel}
+            </Button>
+          </div>
+        )
+      }
+    >
+      <AnimatePresence mode="wait" initial={false}>
         {success ? (
-          <div className="p-6 flex-grow flex flex-col items-center justify-center text-center space-y-5 overflow-y-auto">
-            <div className="h-16 w-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center">
-              <CheckCircle2 className="h-10 w-10" />
-            </div>
-            <div>
-              <h4 className="text-lg font-bold text-slate-800">
-                {success.count > 1 ? `${success.count}件の予約が完了しました` : '予約が正常に完了しました'}
-              </h4>
-              <p className="text-xs text-slate-500 mt-2 px-4 leading-relaxed">
-                カレンダーに追加することで、スマートフォンのカレンダーアプリに予約情報を登録できます。
-                {invitedEmails.length > 0 && '同乗者への招待メールも送信されました。'}
-              </p>
+          <motion.div
+            key="success"
+            data-testid="reservation-success"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-col items-center gap-5 py-4 text-center"
+          >
+            <motion.div
+              initial={{ scale: 0, rotate: -40 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 14, delay: 0.05 }}
+              className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-b from-emerald-400 to-emerald-500 text-white shadow-[0_14px_30px_-10px_rgba(16,185,129,0.8)]"
+            >
+              <Check className="h-10 w-10" strokeWidth={3} />
+            </motion.div>
+            <div className="text-[20px] font-extrabold text-ink">
+              {success.count > 1 ? `${success.count}件の予約が完了` : '予約が完了しました'}
             </div>
 
             {success.skipped.length > 0 && (
-              <div className="w-full text-left p-3 bg-amber-50 border border-amber-100 rounded-xl text-[11px] text-amber-800">
-                <p className="font-bold mb-1">以下の日程は既存の予約と重複したためスキップしました:</p>
-                <ul className="list-disc pl-4 space-y-0.5">
+              <Notice kind="warning">
+                <p className="mb-1">重複のためスキップ:</p>
+                <ul className="list-disc pl-4 space-y-0.5 font-medium">
                   {success.skipped.map((s) => (
                     <li key={s.start_time}>{s.label}</li>
                   ))}
                 </ul>
-              </div>
+              </Notice>
             )}
 
             {success.googleUrl && (
@@ -383,347 +412,344 @@ export default function ReservationModal({
                 href={success.googleUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-sm shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
+                className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-white/80 border border-slate-900/8 text-[15px] font-bold text-ink"
               >
-                <CalendarPlus className="h-5 w-5" />
-                Google カレンダーに追加する{success.count > 1 ? '（初回分）' : ''}
+                <CalendarPlus className="h-5 w-5 text-accent" />
+                Google カレンダーに追加{success.count > 1 ? '（初回分）' : ''}
               </a>
             )}
-
-            <button
-              onClick={closeModal}
-              className="w-full py-3 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-2xl font-semibold text-xs transition-all"
-            >
-              閉じる
-            </button>
-          </div>
+          </motion.div>
         ) : (
-          /* 通常入力フォーム */
-          <div className="p-5 flex-grow overflow-y-auto space-y-4">
+          <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
             {isEditMode && editReservation?.series_id && (
-              <div className="p-2.5 bg-violet-50 border border-violet-100 text-violet-700 rounded-xl text-[11px] flex items-center gap-1.5">
-                <Repeat className="h-3.5 w-3.5 flex-shrink-0" />
-                <span>
-                  繰り返し予約の1回分です{editReservation.recurrence_text ? `（${editReservation.recurrence_text}）` : ''}。
-                  変更はこの回のみに反映されます。
-                </span>
-              </div>
+              <Notice kind="info">
+                繰り返し予約の1回分です{editReservation.recurrence_text ? `（${editReservation.recurrence_text}）` : ''}。変更はこの回のみに反映されます。
+              </Notice>
             )}
 
             {/* 車両選択 */}
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 mb-1.5">共有車両</label>
-              <select
-                value={vehicleId}
-                onChange={(e) => setVehicleId(e.target.value)}
-                disabled={isEditMode}
-                className={`${inputClass} px-3 py-2.5 bg-white disabled:opacity-60 disabled:bg-slate-50`}
-              >
-                {vehicles.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {vehicles.length > 1 && (
+              <div>
+                <FieldLabel>車両</FieldLabel>
+                <div className="flex gap-2 overflow-x-auto scrollbar-none">
+                  {vehicles.map((v) => {
+                    const selected = vehicleId === v.id;
+                    const c = vehicleColor(v.color);
+                    return (
+                      <motion.button
+                        key={v.id}
+                        type="button"
+                        whileTap={{ scale: 0.94 }}
+                        disabled={isEditMode}
+                        onClick={() => setVehicleId(v.id)}
+                        className={`relative flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2.5 text-[14px] font-bold border transition-colors disabled:opacity-60 ${
+                          selected ? 'border-transparent bg-ink text-white' : 'border-slate-900/8 bg-white/70 text-slate-600'
+                        }`}
+                      >
+                        <span className={`h-2 w-2 rounded-full ${c.dot}`} />
+                        {v.name}
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
-            {/* 日付設定 */}
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 mb-1.5">
-                {recurrence ? '初回の予約日' : '予約日'}
-              </label>
-              <div className="relative">
-                <CalendarIcon className="absolute left-3 top-3 h-5 w-5 text-slate-400 pointer-events-none" />
+            {/* 日時 */}
+            <div className="glass rounded-[22px] p-4 space-y-3">
+              <div>
+                <FieldLabel htmlFor="res-date">{recurrence ? '初回の日付' : '日付'}</FieldLabel>
                 <input
+                  id="res-date"
+                  data-testid="res-date"
                   type="date"
                   required
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className={`${inputClass} pl-10 pr-4 py-2.5`}
+                  className="glass-input px-4 font-bold"
                 />
               </div>
-            </div>
-
-            {/* 時間設定 */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-1.5">開始時刻</label>
-                <div className="relative">
-                  <Clock className="absolute left-3 top-3 h-4 w-4 text-slate-400 pointer-events-none" />
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2">
+                <div>
+                  <FieldLabel htmlFor="res-start">開始</FieldLabel>
                   <input
+                    id="res-start"
+                    data-testid="res-start"
                     type="time"
                     required
                     step="900"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
-                    className={`${inputClass} pl-9 pr-3 py-2.5`}
+                    className="glass-input px-3 text-center text-[18px] font-extrabold tabular-nums"
                   />
                 </div>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-1.5">終了時刻</label>
-                <div className="relative">
-                  <Clock className="absolute left-3 top-3 h-4 w-4 text-slate-400 pointer-events-none" />
+                <span className="pb-3 text-slate-300 font-bold">–</span>
+                <div>
+                  <FieldLabel htmlFor="res-end">終了</FieldLabel>
                   <input
+                    id="res-end"
+                    data-testid="res-end"
                     type="time"
                     required
                     step="900"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
-                    className={`${inputClass} pl-9 pr-3 py-2.5`}
+                    className="glass-input px-3 text-center text-[18px] font-extrabold tabular-nums"
                   />
                 </div>
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
+                {[1, 2, 3, 5, 8].map((h) => (
+                  <motion.button
+                    key={h}
+                    type="button"
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setDuration(h)}
+                    className={`flex-shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-bold border transition-colors ${
+                      durationMinutes === h * 60 ? 'border-transparent bg-accent text-white' : 'border-slate-900/8 bg-white/70 text-slate-600'
+                    }`}
+                  >
+                    {h}時間
+                  </motion.button>
+                ))}
+              </div>
+
+              {/* 空き状況 */}
+              <div className="min-h-[28px]" data-testid="availability">
+                <AnimatePresence mode="wait" initial={false}>
+                  {checking ? (
+                    <motion.div key="checking" {...badgeMotion} className="inline-flex items-center gap-1.5 text-[13px] font-bold text-slate-400">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      確認中
+                    </motion.div>
+                  ) : conflict === true ? (
+                    isRecurring && conflictList.length > 0 ? (
+                      <motion.div key="partial" {...badgeMotion}>
+                        <Notice kind={allConflict ? 'error' : 'warning'}>
+                          <p>
+                            {occurrenceCount}回中{conflictList.length}回が重複
+                          </p>
+                          <ul className="mt-1 max-h-20 list-disc space-y-0.5 overflow-y-auto pl-4 font-medium">
+                            {conflictList.map((c) => (
+                              <li key={c.start_time}>{c.label}</li>
+                            ))}
+                          </ul>
+                        </Notice>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="conflict"
+                        {...badgeMotion}
+                        data-testid="availability-conflict"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1.5 text-[13px] font-bold text-rose-600"
+                      >
+                        <AlertCircle className="h-4 w-4" />
+                        {timeRange && timeRange.start >= timeRange.end ? '終了は開始より後にしてください' : 'この時間は予約済みです'}
+                      </motion.div>
+                    )
+                  ) : conflict === false ? (
+                    <motion.div
+                      key="ok"
+                      {...badgeMotion}
+                      data-testid="availability-ok"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1.5 text-[13px] font-bold text-emerald-600"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {isRecurring ? `全${occurrenceCount}回 空いています` : '空いています'}
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
               </div>
             </div>
 
             {/* 繰り返し設定（新規作成時のみ） */}
             {!isEditMode && (
-              <div className="p-3 border border-slate-100 rounded-2xl bg-slate-50/50 space-y-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-1.5 flex items-center gap-1">
+              <div className="space-y-3">
+                <FieldLabel>
+                  <span className="inline-flex items-center gap-1">
                     <Repeat className="h-3.5 w-3.5" />
                     繰り返し
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {REPEAT_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setRepeat(opt.value)}
-                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
-                          repeat === opt.value
-                            ? 'bg-indigo-600 text-white border-indigo-600'
-                            : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
+                  </span>
+                </FieldLabel>
+                <div className="glass relative flex rounded-full p-1">
+                  {REPEAT_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setRepeat(opt.value)}
+                      className="relative flex-1 rounded-full py-2 text-[13px] font-bold"
+                    >
+                      {repeat === opt.value && (
+                        <motion.span layoutId="repeat-pill" className="absolute inset-0 rounded-full bg-ink" transition={{ type: 'spring', stiffness: 500, damping: 36 }} />
+                      )}
+                      <span className={`relative ${repeat === opt.value ? 'text-white' : 'text-slate-500'}`}>{opt.label}</span>
+                    </button>
+                  ))}
                 </div>
 
-                {(repeat === 'weekly' || repeat === 'biweekly') && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5">曜日</label>
-                    <div className="flex gap-1">
-                      {[0, 1, 2, 3, 4, 5, 6].map((w) => (
-                        <button
-                          key={w}
-                          type="button"
-                          onClick={() => toggleWeekday(w)}
-                          className={`h-8 w-8 rounded-full text-[11px] font-bold border transition-all ${
-                            repeatWeekdays.includes(w)
-                              ? 'bg-indigo-600 text-white border-indigo-600'
-                              : `bg-white border-slate-200 ${w === 0 ? 'text-rose-500' : w === 6 ? 'text-sky-600' : 'text-slate-600'}`
-                          }`}
-                        >
-                          {weekdayLabel(w)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {repeat !== 'none' && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5">終了日（この日を含む）</label>
-                    <input
-                      type="date"
-                      value={repeatUntil}
-                      min={date}
-                      max={date ? addDaysYmd(date, 366) : undefined}
-                      onChange={(e) => setRepeatUntil(e.target.value)}
-                      className={`${inputClass} px-3 py-2 bg-white`}
-                    />
-                    {recurrence && timeRange && (
-                      <p className="text-[10px] text-slate-500 mt-1.5">
-                        {describeRecurrence(recurrence, timeRange.start)} ・ 全{occurrenceCount}回
-                        {occurrenceCount >= MAX_OCCURRENCES && `（上限${MAX_OCCURRENCES}回）`}
-                      </p>
-                    )}
-                  </div>
-                )}
+                <AnimatePresence initial={false}>
+                  {repeat !== 'none' && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="space-y-3 pt-1">
+                        {(repeat === 'weekly' || repeat === 'biweekly') && (
+                          <div className="flex justify-between gap-1">
+                            {[0, 1, 2, 3, 4, 5, 6].map((w) => {
+                              const on = repeatWeekdays.includes(w);
+                              return (
+                                <motion.button
+                                  key={w}
+                                  type="button"
+                                  whileTap={{ scale: 0.85 }}
+                                  animate={{ scale: on ? 1.05 : 1 }}
+                                  onClick={() => toggleWeekday(w)}
+                                  className={`h-10 w-10 rounded-full text-[13px] font-bold border transition-colors ${
+                                    on
+                                      ? 'border-transparent bg-accent text-white'
+                                      : `border-slate-900/8 bg-white/70 ${w === 0 ? 'text-rose-500' : w === 6 ? 'text-sky-600' : 'text-slate-600'}`
+                                  }`}
+                                >
+                                  {weekdayLabel(w)}
+                                </motion.button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <div>
+                          <FieldLabel htmlFor="repeat-until">終了日</FieldLabel>
+                          <input
+                            id="repeat-until"
+                            type="date"
+                            value={repeatUntil}
+                            min={date}
+                            max={date ? addDaysYmd(date, 366) : undefined}
+                            onChange={(e) => setRepeatUntil(e.target.value)}
+                            className="glass-input px-4 font-bold"
+                          />
+                          {recurrence && timeRange && (
+                            <p className="mt-1.5 text-[12px] font-semibold text-slate-500">
+                              {describeRecurrence(recurrence, timeRange.start)} ・ 全{occurrenceCount}回
+                              {occurrenceCount >= MAX_OCCURRENCES && `（上限${MAX_OCCURRENCES}回）`}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             )}
 
-            {/* 行き先・目的設定（任意） */}
+            {/* 行き先・目的 */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-1.5">
-                  行き先 <span className="text-slate-400 font-normal">(任意)</span>
-                </label>
+                <FieldLabel htmlFor="res-destination">行き先</FieldLabel>
                 <input
+                  id="res-destination"
                   type="text"
-                  placeholder="例：イオンモール, 病院"
+                  placeholder="任意"
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}
-                  className={`${inputClass} px-3 py-2.5`}
+                  className="glass-input h-12 px-4"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-1.5">
-                  目的 <span className="text-slate-400 font-normal">(任意)</span>
-                </label>
+                <FieldLabel htmlFor="res-purpose">目的</FieldLabel>
                 <input
+                  id="res-purpose"
                   type="text"
-                  placeholder="例：買い物, 送り迎え"
+                  placeholder="任意"
                   value={purpose}
                   onChange={(e) => setPurpose(e.target.value)}
-                  className={`${inputClass} px-3 py-2.5`}
+                  className="glass-input h-12 px-4"
                 />
               </div>
             </div>
-
-            {/* リアルタイム競合バッジ */}
-            <div className="pt-1 space-y-2">
-              {checking ? (
-                <div className="inline-flex items-center gap-1 text-[10px] text-slate-400 font-medium px-2.5 py-1 bg-slate-50 border border-slate-100 rounded-lg">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  空き状況を確認中...
-                </div>
-              ) : conflict === true ? (
-                isRecurring && conflictList.length > 0 ? (
-                  <div className={`p-2.5 rounded-xl border text-[11px] ${allConflict ? 'bg-red-50 border-red-100 text-red-700' : 'bg-amber-50 border-amber-100 text-amber-800'}`}>
-                    <p className="font-bold flex items-center gap-1">
-                      <AlertCircle className="h-3.5 w-3.5" />
-                      {occurrenceCount}回中{conflictList.length}回が既存の予約と重複しています
-                    </p>
-                    <ul className="list-disc pl-5 mt-1 space-y-0.5 max-h-20 overflow-y-auto">
-                      {conflictList.map((c) => (
-                        <li key={c.start_time}>{c.label}</li>
-                      ))}
-                    </ul>
-                    {!allConflict && <p className="mt-1">確定すると重複する日程を除いて予約します。</p>}
-                  </div>
-                ) : (
-                  <div className="inline-flex items-center gap-1 text-[10px] text-red-600 font-bold px-2.5 py-1 bg-red-50 border border-red-100 rounded-lg">
-                    <AlertCircle className="h-3.5 w-3.5 text-red-500" />
-                    {timeRange && timeRange.start >= timeRange.end
-                      ? '終了時刻は開始時刻より後にしてください'
-                      : '選択した時間帯は既に予約されています'}
-                  </div>
-                )
-              ) : conflict === false ? (
-                <div className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-bold px-2.5 py-1 bg-emerald-50 border border-emerald-100 rounded-lg">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                  {isRecurring ? `全${occurrenceCount}回とも予約可能です` : 'この時間帯で予約可能です'}
-                </div>
-              ) : null}
-            </div>
-
-            <hr className="border-slate-100" />
 
             {/* 同乗者の招待メール */}
             <div>
-              <label className="block text-[10px] font-bold text-slate-500 mb-1 flex items-center justify-between">
-                <span>同乗者を招待（メール）</span>
-                <span className="text-[9px] text-slate-400 font-normal">登録完了時にメールで .ics を送信します</span>
-              </label>
-
+              <FieldLabel htmlFor="invite-email">同乗者にメールで招待</FieldLabel>
               <form onSubmit={addEmail} className="flex gap-2">
                 <div className="relative flex-grow">
-                  <Mail className="absolute left-3 top-2.5 h-4.5 w-4.5 text-slate-400 pointer-events-none" />
+                  <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
                   <input
+                    id="invite-email"
                     type="email"
                     placeholder="family@example.com"
                     value={emailInput}
                     onChange={(e) => setEmailInput(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                    className="glass-input h-12 pl-10 pr-3"
                   />
                 </div>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all flex-shrink-0"
-                >
+                <Button type="submit" variant="dark" className="h-12 flex-shrink-0">
                   追加
-                </button>
+                </Button>
               </form>
-
-              {/* 招待メールアドレス一覧タグ */}
-              {invitedEmails.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-2 bg-slate-50 p-2 border border-slate-100 rounded-xl max-h-24 overflow-y-auto">
+              <motion.div layout className="mt-2 flex flex-wrap gap-1.5">
+                <AnimatePresence>
                   {invitedEmails.map((email, idx) => (
-                    <span
-                      key={idx}
-                      className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 bg-white text-[10px] font-semibold text-slate-600 rounded-lg border border-slate-200"
+                    <motion.span
+                      key={email}
+                      layout
+                      initial={{ opacity: 0, scale: 0.6 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.6 }}
+                      className="inline-flex items-center gap-1 rounded-full bg-white/80 border border-slate-900/8 py-1 pl-3 pr-1 text-[12px] font-semibold text-slate-600"
                     >
                       {email}
                       <button
                         type="button"
                         onClick={() => removeEmail(idx)}
-                        className="p-0.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded"
+                        aria-label={`${email} を削除`}
+                        className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-900/5 text-slate-400"
                       >
-                        <X className="h-3 w-3" />
+                        <X className="h-3.5 w-3.5" />
                       </button>
-                    </span>
+                    </motion.span>
                   ))}
-                </div>
-              )}
+                </AnimatePresence>
+              </motion.div>
             </div>
 
-            {/* エラーメッセージ表示 */}
-            {errorMessage && (
-              <div className="p-3 bg-red-50 border border-red-100 text-red-600 rounded-xl text-xs font-semibold flex gap-1.5 items-start">
-                <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
+            <Notice kind="error" testId="reservation-error">{errorMessage}</Notice>
 
             {/* 繰り返し予約の削除範囲の選択 */}
-            {showDeleteOptions && editReservation && (
-              <div className="p-3 border border-red-100 bg-red-50/50 rounded-2xl space-y-2">
-                <p className="text-[11px] font-bold text-red-700">削除する範囲を選択してください</p>
-                <div className="grid grid-cols-1 gap-1.5">
-                  <button type="button" disabled={submitting} onClick={() => handleDelete('single')} className="py-2 bg-white border border-red-200 text-red-600 rounded-xl text-xs font-bold hover:bg-red-50 disabled:opacity-50">
-                    この予約のみ
-                  </button>
-                  <button type="button" disabled={submitting} onClick={() => handleDelete('future')} className="py-2 bg-white border border-red-200 text-red-600 rounded-xl text-xs font-bold hover:bg-red-50 disabled:opacity-50">
-                    この回以降すべて
-                  </button>
-                  <button type="button" disabled={submitting} onClick={() => handleDelete('all')} className="py-2 bg-white border border-red-200 text-red-600 rounded-xl text-xs font-bold hover:bg-red-50 disabled:opacity-50">
-                    繰り返し予約すべて
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* 送信ボタン */}
-            <div className="pt-2 flex gap-2">
-              {isEditMode && editReservation && editReservation.user_id === currentUserId && (
-                <button
-                  type="button"
-                  onClick={() => (editReservation.series_id ? setShowDeleteOptions((v) => !v) : handleDelete('single'))}
-                  disabled={submitting}
-                  className="px-4 py-3 border border-red-200 text-red-500 hover:bg-red-50 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-1 flex-shrink-0 disabled:opacity-50"
-                  title="予約を削除"
+            <AnimatePresence>
+              {showDeleteOptions && editReservation && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="space-y-2 rounded-[22px] border border-rose-200/70 bg-rose-50/70 p-3"
                 >
-                  <Trash2 className="h-4.5 w-4.5" />
-                  削除
-                </button>
+                  <p className="text-[13px] font-bold text-rose-700">削除する範囲</p>
+                  {(
+                    [
+                      ['single', 'この予約のみ'],
+                      ['future', 'この回以降すべて'],
+                      ['all', '繰り返し予約すべて'],
+                    ] as const
+                  ).map(([scope, label]) => (
+                    <Button key={scope} variant="danger" size="sm" className="w-full" disabled={submitting} onClick={() => handleDelete(scope)}>
+                      {label}
+                    </Button>
+                  ))}
+                </motion.div>
               )}
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={submitting || checking || (conflict === true && !canSkipConflicts)}
-                className="flex-grow py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-sm shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    送信中...
-                  </>
-                ) : canSkipConflicts ? (
-                  `重複を除いて${occurrenceCount - conflictList.length}件を予約する`
-                ) : isRecurring ? (
-                  `${occurrenceCount}件の予約を確定する`
-                ) : (
-                  '予約を確定する'
-                )}
-              </button>
-            </div>
-          </div>
+            </AnimatePresence>
+          </motion.div>
         )}
-      </div>
-    </div>
+      </AnimatePresence>
+    </Sheet>
   );
 }
+
+const badgeMotion = {
+  initial: { opacity: 0, y: 6, scale: 0.96 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  exit: { opacity: 0, y: -6, scale: 0.96 },
+};
