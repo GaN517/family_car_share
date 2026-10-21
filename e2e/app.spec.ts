@@ -165,6 +165,73 @@ test('ワンタップ時間指定で終了時刻が設定される', async () =>
   await expect(sheet).toBeHidden();
 });
 
+test('新規予約の開始時刻は現在時刻の次の00分になる', async () => {
+  await taroPage.getByRole('button', { name: '今日', exact: true }).click();
+  const now = new Date(Date.now() + 9 * 3600_000);
+  const next = new Date(Math.floor(now.getTime() / 3600_000) * 3600_000 + 3600_000);
+  const hm = (d: Date) => d.toISOString().slice(11, 16);
+  const sheet = await openCreateSheet(taroPage);
+  await expect(sheet.getByTestId('res-date')).toHaveValue(next.toISOString().slice(0, 10));
+  await expect(sheet.getByTestId('res-start')).toHaveValue(hm(next));
+  await expect(sheet.getByTestId('res-end')).toHaveValue(hm(new Date(next.getTime() + 3600_000)));
+  expect(hm(next).endsWith(':00')).toBeTruthy();
+  await sheet.getByRole('button', { name: '閉じる' }).click();
+  await expect(sheet).toBeHidden();
+});
+
+test('日をまたぐ予約を作成でき、両方の日のタイムラインに表示される', async () => {
+  const day = jstYmd(2);
+  const nextDay = jstYmd(3);
+  const sheet = await openCreateSheet(taroPage);
+  await sheet.getByTestId('res-date').fill(day);
+  await sheet.getByTestId('res-start').fill('22:00');
+  await sheet.getByTestId('res-end').fill('02:00');
+  // 終了を開始より前にすると翌日の終了になる
+  await expect(sheet.getByTestId('res-end-date')).toHaveValue(nextDay);
+  await expect(sheet.getByTestId('overnight-badge')).toHaveText('翌日');
+  await expect(sheet.getByTestId('availability-ok')).toBeVisible();
+  await expect(sheet.getByTestId('duration-label')).toContainText('4時間');
+  await snap(taroPage, '04-sheet-overnight');
+  await sheet.getByTestId('submit-reservation').click();
+  await expect(sheet.getByTestId('reservation-success')).toBeVisible();
+  await sheet.getByRole('button', { name: '閉じる' }).last().click();
+  await expect(sheet).toBeHidden();
+
+  // 日付切り替え時は前の日のカードがスライドアウトするので、1枚になるまで待つ
+  await taroPage.getByTestId(`day-${day}`).click();
+  await expect(taroPage.getByTestId('reservation-time')).toHaveCount(1);
+  await expect(taroPage.getByTestId('reservation-time')).toHaveText(/22:00.*翌日.*02:00/);
+  await taroPage.getByTestId(`day-${nextDay}`).click();
+  await expect(taroPage.getByTestId('reservation-time').filter({ hasText: '前日' })).toHaveCount(1);
+  await expect(taroPage.getByTestId('reservation-time')).toHaveCount(1);
+  await expect(taroPage.getByTestId('reservation-time')).toHaveText(/前日.*22:00.*02:00/);
+  await expect(taroPage.getByTestId(`day-${nextDay}`).locator('span').last()).toHaveClass(/opacity-100/);
+
+  // 24時間の予約もワンタップで作れる（翌日の同時刻まで）
+  const sheet2 = await openCreateSheet(taroPage);
+  await sheet2.getByTestId('res-date').fill(jstYmd(5));
+  await sheet2.getByTestId('res-start').fill('09:00');
+  await sheet2.getByRole('button', { name: '24時間' }).click();
+  await expect(sheet2.getByTestId('res-end-date')).toHaveValue(jstYmd(6));
+  await expect(sheet2.getByTestId('res-end')).toHaveValue('09:00');
+  await expect(sheet2.getByTestId('duration-label')).toContainText('1日');
+  await sheet2.getByRole('button', { name: '閉じる' }).click();
+  await expect(sheet2).toBeHidden();
+});
+
+test('ファビコン・アプリアイコンが設定されている', async ({ page, request }) => {
+  await page.goto('/login');
+  await expect(page.locator('link[rel="icon"][type="image/svg+xml"]')).toHaveCount(1);
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveCount(1);
+  const svgHref = await page.locator('link[rel="icon"][type="image/svg+xml"]').getAttribute('href');
+  const svg = await request.get(svgHref!);
+  expect(svg.ok()).toBeTruthy();
+  expect(svg.headers()['content-type']).toContain('image/svg+xml');
+  const ico = await request.get('/favicon.ico');
+  expect(ico.ok()).toBeTruthy();
+  expect((await ico.body()).readUInt16LE(2)).toBe(1); // ICO 形式
+});
+
 test('家族が招待コードで参加し、自分と相手の予約が区別して表示される', async ({ browser }) => {
   hanakoPage = await newMobilePage(browser);
   await signUp(hanakoPage, HANAKO);
@@ -193,7 +260,9 @@ test('いま使用中の予約は「使用中」として表示される', async
   const groupId = taro.fields.group_id.stringValue!;
   const [vehicle] = await runQuery('vehicles', 'group_id', groupId);
   const start = new Date(Date.now() - 30 * 60_000);
-  const end = new Date(Date.now() + 90 * 60_000);
+  // 翌日のテストに影響しないよう、終了は今日の 24:00 (JST) までに収める
+  const endOfTodayJst = new Date(`${jstYmd(1)}T00:00:00+09:00`).getTime();
+  const end = new Date(Math.min(Date.now() + 90 * 60_000, endOfTodayJst));
   const res = await fetch(`${FIRESTORE}/reservations`, {
     method: 'POST',
     headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
@@ -328,7 +397,7 @@ test('リリースノート配信 API: 認証・ドライラン・二重配信�
   expect(dry.status()).toBe(200);
   const dryBody = await dry.json();
   expect(dryBody).toMatchObject({ success: true, dry_run: true, recipients: 0 });
-  expect(dryBody.text).toContain('デザインを一新しました');
+  expect(dryBody.text).toContain('予約がもっと簡単になりました');
 
   const first = await (await request.post('/api/line/release-notes', { headers })).json();
   expect(first).toMatchObject({ success: true, recipients: 0 });

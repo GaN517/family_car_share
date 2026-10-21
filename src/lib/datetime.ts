@@ -96,3 +96,19 @@ export const formatDuration = (ms: number): string => {
   }
   return `${Math.floor(hours / 24)}日`;
 };
+
+/** 次の「00分」（例: 14:23 → 15:00）を JST の日付・時刻で返します。ちょうど 00 分のときは1時間後 */
+export const nextHourSlot = (now: DateInput = new Date()): { ymd: string; hm: string } => {
+  const hour = 60 * 60 * 1000;
+  const next = new Date(Math.floor(new Date(now).getTime() / hour) * hour + hour);
+  return { ymd: toJstYmd(next), hm: toJstHm(next) };
+};
+
+/** 予約の長さを「2時間」「1日3時間30分」の形式で表記します */
+export const formatSpan = (ms: number): string => {
+  const totalMin = Math.max(0, Math.round(ms / 60000));
+  const days = Math.floor(totalMin / 1440);
+  const hours = Math.floor((totalMin % 1440) / 60);
+  const min = totalMin % 60;
+  return [days && `${days}日`, hours && `${hours}時間`, min && `${min}分`].filter(Boolean).join('') || '0分';
+};
