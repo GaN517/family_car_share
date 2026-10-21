@@ -397,7 +397,7 @@ test('リリースノート配信 API: 認証・ドライラン・二重配信�
   expect(dry.status()).toBe(200);
   const dryBody = await dry.json();
   expect(dryBody).toMatchObject({ success: true, dry_run: true, recipients: 0 });
-  expect(dryBody.text).toContain('デザインを一新しました');
+  expect(dryBody.text).toContain('予約がもっと簡単になりました');
 
   const first = await (await request.post('/api/line/release-notes', { headers })).json();
   expect(first).toMatchObject({ success: true, recipients: 0 });
